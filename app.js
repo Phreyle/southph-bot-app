@@ -165,10 +165,20 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   // Interaction type and data
   const { type, id, data } = req.body;
 
+  // DEBUG: Log all incoming interactions
+  console.log('========================================');
+  console.log('📥 INTERACTION RECEIVED');
+  console.log('Time:', new Date().toISOString());
+  console.log('Type:', type);
+  console.log('ID:', id);
+  console.log('Data:', JSON.stringify(data, null, 2));
+  console.log('========================================');
+
   /**
    * Handle verification requests
    */
   if (type === InteractionType.PING) {
+    console.log('✅ PING received, responding with PONG');
     return res.send({ type: InteractionResponseType.PONG });
   }
 
@@ -178,9 +188,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
    */
   if (type === InteractionType.APPLICATION_COMMAND) {
     const { name } = data;
+    console.log(`🔧 Processing slash command: /${name}`);
 
     // "/utc" command - Display current UTC time (Albion Online in-game time)
     if (name === 'utc') {
+      console.log('⏰ Executing /utc command');
       const now = new Date();
       const hours = String(now.getUTCHours()).padStart(2, '0');
       const minutes = String(now.getUTCMinutes()).padStart(2, '0');
@@ -201,13 +213,17 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     // "/ffroa" command - Manage FFROA role callout
     if (name === 'ffroa') {
+      console.log('🛡️ Executing /ffroa command');
       const subcommand = data.options[0].name;
+      console.log(`   Subcommand: ${subcommand}`);
       const context = req.body.context;
       const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
 
       // Subcommand: create
       if (subcommand === 'create') {
+        console.log('   Creating FFROA thread...');
         if (ffroaState.active) {
+          console.log('   ❌ FFROA already active');
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
@@ -231,6 +247,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const embed = buildFFROAEmbed();
         
         // Defer the response to give us time to create the thread
+        console.log('   ⏳ Deferring response...');
         res.send({
           type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -240,6 +257,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         try {
           // Create a thread in the channel
+          console.log('   📝 Creating thread...');
           const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
             method: 'POST',
             body: {
@@ -250,8 +268,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
           const threadData = await threadResponse.json();
           const threadId = threadData.id;
+          console.log(`   ✅ Thread created: ${threadId}`);
 
           // Post the FFROA message in the thread
+          console.log('   📤 Posting message in thread...');
           const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
             method: 'POST',
             body: {
@@ -265,8 +285,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           ffroaState.messageId = messageData.id;
           ffroaState.channelId = threadId;
           ffroaState.threadId = threadId;
+          console.log('   ✅ FFROA state saved');
 
           // Follow up with success message
+          console.log('   📨 Sending follow-up message...');
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
             method: 'PATCH',
             body: {
@@ -274,9 +296,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               flags: 64
             },
           });
+          console.log('   ✅ /ffroa create completed successfully');
 
         } catch (err) {
-          console.error('Error creating thread:', err);
+          console.error('   ❌ Error creating thread:', err);
           ffroaState.active = false;
           ffroaState.roles[roleOption] = null;
           
@@ -433,10 +456,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     // "/ctaregear" command - Create CTA regear thread
     if (name === 'ctaregear') {
+      console.log('⚔️ Executing /ctaregear command');
       const threadTitle = data.options[0].value;
       const channelId = req.body.channel_id;
 
       // Defer the response
+      console.log('   ⏳ Deferring response...');
       res.send({
         type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
@@ -446,6 +471,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       try {
         // Create a thread in the channel
+        console.log('   📝 Creating CTA regear thread...');
         const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
           method: 'POST',
           body: {
@@ -456,6 +482,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
         const threadData = await threadResponse.json();
         const threadId = threadData.id;
+        console.log(`   ✅ CTA thread created: ${threadId}`);
 
         // Create embed for CTA regear
         const embed = new EmbedBuilder()
@@ -483,9 +510,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             flags: 64
           },
         });
+        console.log('   ✅ /ctaregear completed successfully');
 
       } catch (err) {
-        console.error('Error creating CTA regear thread:', err);
+        console.error('   ❌ Error creating CTA regear thread:', err);
         
         // Follow up with error message
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -501,10 +529,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     // "/ffregear" command - Create FF regear thread
     if (name === 'ffregear') {
+      console.log('🛡️ Executing /ffregear command');
       const threadTitle = data.options[0].value;
       const channelId = req.body.channel_id;
 
       // Defer the response
+      console.log('   ⏳ Deferring response...');
       res.send({
         type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
@@ -514,6 +544,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       try {
         // Create a thread in the channel
+        console.log('   📝 Creating FF regear thread...');
         const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
           method: 'POST',
           body: {
@@ -524,6 +555,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
         const threadData = await threadResponse.json();
         const threadId = threadData.id;
+        console.log(`   ✅ FF thread created: ${threadId}`);
 
         // Create embed for FF regear
         const embed = new EmbedBuilder()
@@ -534,6 +566,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           );
 
         // Post the message in the thread
+        console.log('   📤 Posting FF message in thread...');
         await DiscordRequest(`channels/${threadId}/messages`, {
           method: 'POST',
           body: {
@@ -543,6 +576,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
 
         // Follow up with success message
+        console.log('   📨 Sending follow-up message...');
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
@@ -550,9 +584,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             flags: 64
           },
         });
+        console.log('   ✅ /ffregear completed successfully');
 
       } catch (err) {
-        console.error('Error creating FF regear thread:', err);
+        console.error('   ❌ Error creating FF regear thread:', err);
         
         // Follow up with error message
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -568,7 +603,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     // "/bank" command - Bank economy system
     if (name === 'bank') {
+      console.log('💰 Executing /bank command');
       const subcommand = data.options[0].name;
+      console.log(`   Subcommand: ${subcommand}`);
       const context = req.body.context;
       const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
       const member = req.body.member;
@@ -724,6 +761,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     // "/help" command - Show available commands
     if (name === 'help') {
+      console.log('❓ Executing /help command');
       const helpMessage = `**South PH - Albion Online Guild Bot** 🛡️\n\n` +
         `**Available Commands:**\n` +
         `• \`/help\` - Show this help message\n\n` +
@@ -748,11 +786,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
-    console.error(`unknown command: ${name}`);
+    console.error(`❌ Unknown command: ${name}`);
     return res.status(400).json({ error: 'unknown command' });
   }
 
-  console.error('unknown interaction type', type);
+  console.error('❌ Unknown interaction type:', type);
   return res.status(400).json({ error: 'unknown interaction type' });
 });
 
