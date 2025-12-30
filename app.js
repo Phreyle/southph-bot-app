@@ -1176,5 +1176,5 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 });
 
 app.listen(PORT, () => {
-  console.log('Listening on port', PORT);
+  console.log('Listening on port ', PORT, ' ✅');
 });
