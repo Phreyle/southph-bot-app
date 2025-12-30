@@ -1,13 +1,62 @@
 /**
  * Bank Economy System
- * In-memory storage using Map for user balances
+ * Persistent storage using JSON file for user balances
  */
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Currency symbol
 export const CURRENCY = '💰';
 
+// Database file path
+const DB_FILE = path.join(__dirname, 'bank-data.json');
+
 // Storage: userId -> balance
 const bankData = new Map();
+
+/**
+ * Load bank data from file
+ */
+function loadData() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const rawData = fs.readFileSync(DB_FILE, 'utf8');
+      const data = JSON.parse(rawData);
+      
+      // Load data into Map
+      for (const [userId, balance] of Object.entries(data)) {
+        bankData.set(userId, balance);
+      }
+      
+      console.log(`💾 Bank data loaded: ${bankData.size} users`);
+    } else {
+      console.log('💾 No existing bank data found, starting fresh');
+    }
+  } catch (error) {
+    console.error('❌ Error loading bank data:', error);
+  }
+}
+
+/**
+ * Save bank data to file
+ */
+function saveData() {
+  try {
+    const data = Object.fromEntries(bankData);
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`💾 Bank data saved: ${bankData.size} users`);
+  } catch (error) {
+    console.error('❌ Error saving bank data:', error);
+  }
+}
+
+// Load data when module is imported
+loadData();
 
 /**
  * Get user balance
@@ -31,6 +80,7 @@ export function setBalance(userId, amount) {
   } else {
     bankData.set(userId, amount);
   }
+  saveData(); // Save after every change
   return true;
 }
 
