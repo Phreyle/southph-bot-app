@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   InteractionType,
   InteractionResponseType,
@@ -14,9 +17,39 @@ import {
   withdraw, 
   getBalance, 
   getActiveUsers, 
+  clearUser,
+  clearAll,
   CURRENCY 
 } from './bank.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 console.log('Interaction received at', Date.now());
+
+// Prefix configuration
+const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
+
+function getPrefix() {
+  try {
+    const data = fs.readFileSync(PREFIX_FILE, 'utf8');
+    const config = JSON.parse(data);
+    return config.prefix || '!';
+  } catch (error) {
+    return '!';
+  }
+}
+
+function setPrefix(newPrefix) {
+  try {
+    fs.writeFileSync(PREFIX_FILE, JSON.stringify({ prefix: newPrefix }, null, 2), 'utf8');
+    console.log(`✅ Prefix changed to: ${newPrefix}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error saving prefix:', error);
+    return false;
+  }
+}
 // Create an express app
 const app = express();
 // Get port, or default to 3000
@@ -86,71 +119,335 @@ const buildFFROAEmbed = () => {
 
 // Listen for messages in the FFROA thread
 client.on('messageCreate', async (message) => {
-  // Ignore bot messages and messages outside the active FFROA thread
-  if (message.author.bot || !ffroaState.active || message.channelId !== ffroaState.threadId) {
+  // Ignore bot messages
+  if (message.author.bot) return;
+
+  const prefix = getPrefix();
+
+  // Handle FFROA thread messages
+  if (ffroaState.active && message.channelId === ffroaState.threadId) {
+    const content = message.content.toLowerCase().trim();
+    
+    // Pattern matching for "x [role]" format
+    const rolePatterns = {
+      tank: /^x\s+(tank|t)$/i,
+      heal: /^x\s+(heal|healer|h)$/i,
+      shadowcaller: /^x\s+(shadowcaller|sc|shadow)$/i,
+      blazing: /^x\s+(blazing|blaze|b)$/i,
+      mp: /^x\s+(mp|mist\s*piercer)$/i,
+      mp2: /^x\s+(mp2|mist\s*piercer\s*2)$/i,
+      flex: /^x\s+(flex|f|perma|arctic|LC)$/i
+    };
+
+    let assignedRole = null;
+
+    // Check which role the user is claiming
+    for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+      if (pattern.test(content)) {
+        // Check if role is already taken by someone else
+        if (ffroaState.roles[roleKey] && ffroaState.roles[roleKey] !== message.author.id) {
+          await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${ffroaState.roles[roleKey]}>!`);
+          return;
+        }
+
+        // If user already has this role, ignore (no change needed)
+        if (ffroaState.roles[roleKey] === message.author.id) {
+          await message.react('ℹ️');
+          return;
+        }
+
+        // Remove user from any other role they currently have
+        for (const [existingRoleKey, existingUserId] of Object.entries(ffroaState.roles)) {
+          if (existingUserId === message.author.id) {
+            ffroaState.roles[existingRoleKey] = null;
+          }
+        }
+
+        // Assign the new role
+        ffroaState.roles[roleKey] = message.author.id;
+        assignedRole = roleKey;
+        break;
+      }
+    }
+
+    // If a role was assigned, update the FFROA message
+    if (assignedRole) {
+      try {
+        const embed = buildFFROAEmbed();
+        await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
+          method: 'PATCH',
+          body: {
+            embeds: [embed.toJSON()]
+          },
+        });
+
+        await message.react('✅');
+      } catch (err) {
+        console.error('Error updating FFROA message:', err);
+        await message.reply('❌ Failed to update the FFROA board.');
+      }
+    }
     return;
   }
 
-  const content = message.content.toLowerCase().trim();
-  
-  // Pattern matching for "x [role]" format
-  const rolePatterns = {
-    tank: /^x\s+(tank|t)$/i,
-    heal: /^x\s+(heal|healer|h)$/i,
-    shadowcaller: /^x\s+(shadowcaller|sc|shadow)$/i,
-    blazing: /^x\s+(blazing|blaze|b)$/i,
-    mp: /^x\s+(mp|mist\s*piercer)$/i,
-    mp2: /^x\s+(mp2|mist\s*piercer\s*2)$/i,
-    flex: /^x\s+(flex|f|perma|arctic|LC)$/i
-  };
+  // Handle text commands with prefix
+  if (!message.content.startsWith(prefix)) return;
 
-  let assignedRole = null;
+  const args = message.content.slice(prefix.length).trim().split(/\s+/);
+  const command = args.shift().toLowerCase();
 
-  // Check which role the user is claiming
-  for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
-    if (pattern.test(content)) {
-      // Check if role is already taken by someone else
-      if (ffroaState.roles[roleKey] && ffroaState.roles[roleKey] !== message.author.id) {
-        await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${ffroaState.roles[roleKey]}>!`);
-        return;
-      }
+  console.log(`📝 Text command received: ${prefix}${command}`);
 
-      // If user already has this role, ignore (no change needed)
-      if (ffroaState.roles[roleKey] === message.author.id) {
-        await message.react('ℹ️');
-        return;
-      }
+  // !utc command
+  if (command === 'utc' || command === 'time') {
+    const now = new Date();
+    const hours = String(now.getUTCHours()).padStart(2, '0');
+    const minutes = String(now.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(now.getUTCSeconds()).padStart(2, '0');
+    const utcTime = `${hours}:${minutes}:${seconds}`;
 
-      // Remove user from any other role they currently have
-      for (const [existingRoleKey, existingUserId] of Object.entries(ffroaState.roles)) {
-        if (existingUserId === message.author.id) {
-          ffroaState.roles[existingRoleKey] = null;
-        }
-      }
+    const embed = new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setDescription(`⏰ UTC Time Now: **${utcTime}**`);
 
-      // Assign the new role
-      ffroaState.roles[roleKey] = message.author.id;
-      assignedRole = roleKey;
-      break;
-    }
+    await message.reply({ embeds: [embed] });
+    return;
   }
 
-  // If a role was assigned, update the FFROA message
-  if (assignedRole) {
-    try {
-      const embed = buildFFROAEmbed();
-      await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
-        method: 'PATCH',
-        body: {
-          embeds: [embed.toJSON()]
-        },
-      });
+  // !bank or !bal command
+  if (command === 'bank' || command === 'bal' || command === 'balance') {
+    const subcommand = args[0]?.toLowerCase();
+    
+    if (!subcommand || subcommand === 'balance' || subcommand === 'bal') {
+      // Show own balance or mentioned user's balance
+      const mentionedUser = message.mentions.users.first();
+      const targetUserId = mentionedUser?.id || message.author.id;
+      const balance = getBalance(targetUserId);
 
-      await message.react('✅');
-    } catch (err) {
-      console.error('Error updating FFROA message:', err);
-      await message.reply('❌ Failed to update the FFROA board.');
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('💰 Bank Balance')
+        .setDescription(
+          `**User:** <@${targetUserId}>\n` +
+          `**Balance:** ${CURRENCY}${balance.toLocaleString()}`
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
     }
+
+    // Check admin permission for admin commands
+    const isAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
+
+    if (subcommand === 'deposit' || subcommand === 'dep') {
+      if (!isAdmin) {
+        await message.reply('❌ You need Administrator permission to use this command.');
+        return;
+      }
+
+      const mentionedUser = message.mentions.users.first();
+      const amount = parseInt(args[1]);
+
+      if (!mentionedUser || !amount || amount <= 0) {
+        await message.reply(`❌ Usage: \`${prefix}bank deposit @user <amount>\``);
+        return;
+      }
+
+      const result = deposit(mentionedUser.id, amount);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle('💰 Deposit Successful')
+        .setDescription(
+          `**User:** <@${mentionedUser.id}>\n` +
+          `**Deposited:** ${CURRENCY}${amount.toLocaleString()}\n` +
+          `**New Balance:** ${CURRENCY}${result.newBalance.toLocaleString()}`
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (subcommand === 'withdraw' || subcommand === 'with') {
+      if (!isAdmin) {
+        await message.reply('❌ You need Administrator permission to use this command.');
+        return;
+      }
+
+      const mentionedUser = message.mentions.users.first();
+      const amount = parseInt(args[1]);
+
+      if (!mentionedUser || !amount || amount <= 0) {
+        await message.reply(`❌ Usage: \`${prefix}bank withdraw @user <amount>\``);
+        return;
+      }
+
+      const result = withdraw(mentionedUser.id, amount);
+
+      if (!result.success) {
+        await message.reply(`❌ ${result.error}`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle('💸 Withdrawal Successful')
+        .setDescription(
+          `**User:** <@${mentionedUser.id}>\n` +
+          `**Withdrawn:** ${CURRENCY}${amount.toLocaleString()}\n` +
+          `**New Balance:** ${CURRENCY}${result.newBalance.toLocaleString()}`
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (subcommand === 'active' || subcommand === 'list') {
+      const activeUsers = getActiveUsers();
+
+      if (activeUsers.length === 0) {
+        await message.reply('📊 No users currently have money in the bank.');
+        return;
+      }
+
+      const userList = activeUsers
+        .map(([uid, bal]) => `<@${uid}> — ${CURRENCY}${bal.toLocaleString()}`)
+        .join('\n');
+
+      const embed = new EmbedBuilder()
+        .setColor(0xf39c12)
+        .setTitle('📊 Active Bank Users')
+        .setDescription(userList)
+        .setFooter({ text: `Total users: ${activeUsers.length}` })
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (subcommand === 'clear') {
+      if (!isAdmin) {
+        await message.reply('❌ You need Administrator permission to use this command.');
+        return;
+      }
+
+      const mentionedUser = message.mentions.users.first();
+
+      if (!mentionedUser) {
+        await message.reply(`❌ Usage: \`${prefix}bank clear @user\``);
+        return;
+      }
+
+      const result = clearUser(mentionedUser.id);
+
+      if (!result.success) {
+        await message.reply(`❌ ${result.error}`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0xe67e22)
+        .setTitle('🗑️ Balance Cleared')
+        .setDescription(
+          `**User:** <@${mentionedUser.id}>\n` +
+          `**Cleared Amount:** ${CURRENCY}${result.clearedAmount.toLocaleString()}\n` +
+          `**New Balance:** ${CURRENCY}0`
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (subcommand === 'clearall') {
+      if (!isAdmin) {
+        await message.reply('❌ You need Administrator permission to use this command.');
+        return;
+      }
+
+      const result = clearAll();
+
+      if (!result.success) {
+        await message.reply(`❌ ${result.error}`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0xc0392b)
+        .setTitle('🗑️ All Balances Cleared')
+        .setDescription(
+          `**Cleared Users:** ${result.clearedUsers}\n` +
+          `**All balances have been reset to ${CURRENCY}0**`
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Invalid subcommand
+    await message.reply(
+      `❌ Invalid subcommand. Available: \`balance\`, \`deposit\`, \`withdraw\`, \`active\`, \`clear\`, \`clearall\``
+    );
+    return;
+  }
+
+  // !prefix command - Change bot prefix (Admin only)
+  if (command === 'prefix') {
+    const isAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
+    
+    if (!isAdmin) {
+      await message.reply('❌ You need Administrator permission to change the prefix.');
+      return;
+    }
+
+    const newPrefix = args[0];
+
+    if (!newPrefix) {
+      await message.reply(`📝 Current prefix: \`${prefix}\`\nUsage: \`${prefix}prefix <new_prefix>\``);
+      return;
+    }
+
+    if (newPrefix.length > 3) {
+      await message.reply('❌ Prefix must be 3 characters or less.');
+      return;
+    }
+
+    if (setPrefix(newPrefix)) {
+      await message.reply(`✅ Prefix changed from \`${prefix}\` to \`${newPrefix}\``);
+    } else {
+      await message.reply('❌ Failed to change prefix.');
+    }
+    return;
+  }
+
+  // !help command
+  if (command === 'help' || command === 'commands') {
+    const embed = new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle('📖 South PH Bot - Text Commands')
+      .setDescription(
+        `**Current Prefix:** \`${prefix}\`\n\n` +
+        `**General Commands:**\n` +
+        `• \`${prefix}help\` - Show this help message\n` +
+        `• \`${prefix}utc\` or \`${prefix}time\` - Display UTC time\n` +
+        `• \`${prefix}prefix <new>\` - Change prefix (Admin)\n\n` +
+        `**Bank Commands:**\n` +
+        `• \`${prefix}bal [@user]\` - Check balance\n` +
+        `• \`${prefix}bank deposit @user <amount>\` - Deposit (Admin)\n` +
+        `• \`${prefix}bank withdraw @user <amount>\` - Withdraw (Admin)\n` +
+        `• \`${prefix}bank active\` - List all users\n` +
+        `• \`${prefix}bank clear @user\` - Clear user (Admin)\n` +
+        `• \`${prefix}bank clearall\` - Clear all (Admin)\n\n` +
+        `*Slash commands (/) are also available!*`
+      )
+      .setFooter({ text: 'South PH - Albion Online Guild Bot' });
+
+    await message.reply({ embeds: [embed] });
+    return;
   }
 });
 
@@ -757,6 +1054,90 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           },
         });
       }
+
+      // Subcommand: clear
+      if (subcommand === 'clear') {
+        if (!isAdmin) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ You need Administrator permission to use this command.',
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
+        const targetUserId = data.options[0].options[0].value;
+        const result = clearUser(targetUserId);
+
+        if (!result.success) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ ${result.error}`,
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(0xe67e22) // Orange
+          .setTitle('🗑️ Balance Cleared')
+          .setDescription(
+            `**User:** <@${targetUserId}>\n` +
+            `**Cleared Amount:** ${CURRENCY}${result.clearedAmount.toLocaleString()}\n` +
+            `**New Balance:** ${CURRENCY}0`
+          )
+          .setTimestamp();
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()]
+          },
+        });
+      }
+
+      // Subcommand: clearall
+      if (subcommand === 'clearall') {
+        if (!isAdmin) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ You need Administrator permission to use this command.',
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
+        const result = clearAll();
+
+        if (!result.success) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ ${result.error}`,
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(0xc0392b) // Dark Red
+          .setTitle('🗑️ All Balances Cleared')
+          .setDescription(
+            `**Cleared Users:** ${result.clearedUsers}\n` +
+            `**All balances have been reset to ${CURRENCY}0**`
+          )
+          .setTimestamp();
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()]
+          },
+        });
+      }
     }
 
     // "/help" command - Show available commands
@@ -769,7 +1150,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         `• \`/ffroa create [role] [title]\` - Create FFROA role callout\n` +
         `• \`/ctaregear [title]\` - Create CTA regear thread\n` +
         `• \`/ffregear [title]\` - Create FF regear thread\n` +
-        `• \`/bank deposit/withdraw/balance/active\` - Bank economy system\n` +
+        `• \`/bank deposit/withdraw/balance/active/clear/clearall\` - Bank economy system\n` +
         `*More commands coming soon!*`;
 
       return res.send({

@@ -153,3 +153,50 @@ export function getActiveUsers() {
 export function hasBalance(userId) {
   return bankData.has(userId);
 }
+
+/**
+ * Clear a specific user's balance
+ * @param {string} userId - Discord user ID
+ * @returns {object} Result object
+ */
+export function clearUser(userId) {
+  const currentBalance = getBalance(userId);
+  
+  if (currentBalance === 0) {
+    return {
+      success: false,
+      error: 'User has no balance to clear'
+    };
+  }
+  
+  bankData.delete(userId);
+  saveData();
+  
+  return {
+    success: true,
+    clearedAmount: currentBalance
+  };
+}
+
+/**
+ * Clear all users' balances
+ * @returns {object} Result object
+ */
+export function clearAll() {
+  const userCount = bankData.size;
+  
+  if (userCount === 0) {
+    return {
+      success: false,
+      error: 'No users in the bank to clear'
+    };
+  }
+  
+  bankData.clear();
+  saveData();
+  
+  return {
+    success: true,
+    clearedUsers: userCount
+  };
+}

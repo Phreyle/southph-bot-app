@@ -224,6 +224,24 @@ const BANK_COMMAND = {
       name: 'active',
       description: 'List all users with money',
     },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'clear',
+      description: 'Clear a specific user\'s balance (Admin only)',
+      options: [
+        {
+          type: 6, // USER
+          name: 'user',
+          description: 'The user to clear balance from',
+          required: true,
+        },
+      ],
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'clearall',
+      description: 'Clear all users\' balances (Admin only)',
+    },
   ],
   type: 1,
   integration_types: [0, 1],
