@@ -16,7 +16,7 @@ import {
   getActiveUsers, 
   CURRENCY 
 } from './bank.js';
-
+console.log('Interaction received at', Date.now());
 // Create an express app
 const app = express();
 // Get port, or default to 3000
@@ -230,16 +230,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         const embed = buildFFROAEmbed();
         
-        try {
-          // First, acknowledge the interaction
-          await res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `✅ Creating FFROA thread: **${threadTitle}**...`,
-              flags: 64 // EPHEMERAL
-            },
-          });
+        // Defer the response to give us time to create the thread
+        res.send({
+          type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            flags: 64 // EPHEMERAL
+          }
+        });
 
+        try {
           // Create a thread in the channel
           const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
             method: 'POST',
@@ -267,10 +266,28 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           ffroaState.channelId = threadId;
           ffroaState.threadId = threadId;
 
+          // Follow up with success message
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: `✅ FFROA thread created: **${threadTitle}**`,
+              flags: 64
+            },
+          });
+
         } catch (err) {
           console.error('Error creating thread:', err);
           ffroaState.active = false;
           ffroaState.roles[roleOption] = null;
+          
+          // Follow up with error message
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: '❌ Failed to create FFROA thread.',
+              flags: 64
+            },
+          });
         }
         return;
       }
@@ -419,16 +436,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const threadTitle = data.options[0].value;
       const channelId = req.body.channel_id;
 
-      try {
-        // First, acknowledge the interaction
-        await res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: `✅ Creating CTA regear thread: **${threadTitle}**...`,
-            flags: 64 // EPHEMERAL
-          },
-        });
+      // Defer the response
+      res.send({
+        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          flags: 64 // EPHEMERAL
+        }
+      });
 
+      try {
         // Create a thread in the channel
         const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
           method: 'POST',
@@ -459,8 +475,26 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           },
         });
 
+        // Follow up with success message
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: `✅ CTA regear thread created: **${threadTitle}**`,
+            flags: 64
+          },
+        });
+
       } catch (err) {
         console.error('Error creating CTA regear thread:', err);
+        
+        // Follow up with error message
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: '❌ Failed to create CTA regear thread.',
+            flags: 64
+          },
+        });
       }
       return;
     }
@@ -470,16 +504,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const threadTitle = data.options[0].value;
       const channelId = req.body.channel_id;
 
-      try {
-        // First, acknowledge the interaction
-        await res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: `✅ Creating FF regear thread: **${threadTitle}**...`,
-            flags: 64 // EPHEMERAL
-          },
-        });
+      // Defer the response
+      res.send({
+        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          flags: 64 // EPHEMERAL
+        }
+      });
 
+      try {
         // Create a thread in the channel
         const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
           method: 'POST',
@@ -509,8 +542,26 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           },
         });
 
+        // Follow up with success message
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: `✅ FF regear thread created: **${threadTitle}**`,
+            flags: 64
+          },
+        });
+
       } catch (err) {
         console.error('Error creating FF regear thread:', err);
+        
+        // Follow up with error message
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: '❌ Failed to create FF regear thread.',
+            flags: 64
+          },
+        });
       }
       return;
     }

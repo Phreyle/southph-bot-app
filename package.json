@@ -14,7 +14,6 @@
     "dev": "nodemon app.js"
   },
   "author": "Phresh",
-  "license": "MIT",
   "dependencies": {
     "@discordjs/rest": "^2.6.0",
     "discord-api-types": "^0.38.37",
