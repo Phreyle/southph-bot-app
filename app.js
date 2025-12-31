@@ -27,7 +27,8 @@ console.log('Interaction received at', Date.now());
 
 // Prefix configuration
 const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
-const PERMISSIONS_FILE = path.join(__dirname, 'permissions-config.json');
+// Use /tmp for permissions in read-only container environments
+const PERMISSIONS_FILE = process.env.PERMISSIONS_FILE || '/tmp/permissions-config.json';
 
 function getPrefix() {
   try {
@@ -63,10 +64,18 @@ function getPermissions() {
 
 function savePermissions(config) {
   try {
+    // Ensure the directory exists
+    const dir = path.dirname(PERMISSIONS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
     fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify(config, null, 2), 'utf8');
+    console.log('✅ Permissions saved successfully to:', PERMISSIONS_FILE);
     return true;
   } catch (error) {
-    console.error('Error saving permissions config:', error);
+    console.error('❌ Error saving permissions config:', error);
+    console.error('   Attempted path:', PERMISSIONS_FILE);
     return false;
   }
 }
@@ -162,9 +171,9 @@ function buildHelpEmbed(member, isSlashCommand = false) {
   if (isAdmin) {
     description += `**🛡️ Administrator Commands** (Discord Admin Only):\n`;
     description += `• \`${prefix}prefix <new>\` - Change bot prefix\n`;
-    description += `• \`${prefix}perms list\` - View role permissions\n`;
-    description += `• \`${prefix}perms add <bank|cta> @role\` - Grant role permission\n`;
-    description += `• \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission\n`;
+    description += `• \`/perms list\` or \`${prefix}perms list\` - View role permissions\n`;
+    description += `• \`/perms add <bank|cta> @role\` or \`${prefix}perms add <bank|cta> @role\` - Grant role permission\n`;
+    description += `• \`/perms remove <bank|cta> @role\` or \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission\n`;
     description += `• \`/ffroa create\` - Create FF ROA callout\n`;
     description += `• \`/ffroa reset\` - Reset FF ROA callout\n`;
     description += `• \`/ffroa adduser\` - Add user to FF ROA role\n`;
@@ -1470,6 +1479,163 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           flags: 64 // EPHEMERAL
         },
       });
+    }
+
+    // "/perms" command - Manage role permissions (Admin only)
+    if (name === 'perms') {
+      console.log('🔐 Executing /perms command');
+      const member = req.body.member;
+      const subcommand = data.options[0].name;
+      
+      // Check if user is Discord Administrator
+      const isAdmin = member && member.permissions && 
+        (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator);
+      
+      if (!isAdmin) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ You need Administrator permission to manage permissions.',
+            flags: 64 // EPHEMERAL
+          },
+        });
+      }
+
+      // Subcommand: list
+      if (subcommand === 'list') {
+        const permissions = getPermissions();
+        const bankRoles = permissions.bankAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
+        const ctaRoles = permissions.ctaRegearRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
+        
+        const embed = new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setTitle('🔐 Current Role Permissions')
+          .addFields(
+            { name: '💰 Bank Admin Roles', value: bankRoles, inline: false },
+            { name: '⚔️ CTA Regear Roles', value: ctaRoles, inline: false }
+          )
+          .setFooter({ text: 'Administrators always have access to all commands' })
+          .setTimestamp();
+        
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64 // EPHEMERAL
+          },
+        });
+      }
+
+      // Subcommand: add
+      if (subcommand === 'add') {
+        const permType = data.options[0].options[0].value; // 'bank' or 'cta'
+        const roleId = data.options[0].options[1].value;
+        
+        let configKey;
+        let displayName;
+        if (permType === 'bank') {
+          configKey = 'bankAdminRoles';
+          displayName = 'Bank Admin';
+        } else if (permType === 'cta') {
+          configKey = 'ctaRegearRoles';
+          displayName = 'CTA Regear';
+        } else {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Invalid permission type.',
+              flags: 64
+            },
+          });
+        }
+
+        const permissions = getPermissions();
+
+        if (permissions[configKey].includes(roleId)) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Role <@&${roleId}> already has ${displayName} permission.`,
+              flags: 64
+            },
+          });
+        }
+        
+        permissions[configKey].push(roleId);
+        if (savePermissions(permissions)) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `✅ Added <@&${roleId}> to ${displayName} permissions.\n\n**Storage location:** \`${PERMISSIONS_FILE}\``,
+              flags: 64
+            },
+          });
+        } else {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Failed to save permissions. Check console for errors.\n**Attempted path:** \`${PERMISSIONS_FILE}\``,
+              flags: 64
+            },
+          });
+        }
+      }
+
+      // Subcommand: remove
+      if (subcommand === 'remove') {
+        const permType = data.options[0].options[0].value; // 'bank' or 'cta'
+        const roleId = data.options[0].options[1].value;
+        
+        let configKey;
+        let displayName;
+        if (permType === 'bank') {
+          configKey = 'bankAdminRoles';
+          displayName = 'Bank Admin';
+        } else if (permType === 'cta') {
+          configKey = 'ctaRegearRoles';
+          displayName = 'CTA Regear';
+        } else {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Invalid permission type.',
+              flags: 64
+            },
+          });
+        }
+
+        const permissions = getPermissions();
+        const index = permissions[configKey].indexOf(roleId);
+        
+        if (index === -1) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Role <@&${roleId}> doesn't have ${displayName} permission.`,
+              flags: 64
+            },
+          });
+        }
+        
+        permissions[configKey].splice(index, 1);
+        if (savePermissions(permissions)) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `✅ Removed <@&${roleId}> from ${displayName} permissions.\n\n**Storage location:** \`${PERMISSIONS_FILE}\``,
+              flags: 64
+            },
+          });
+        } else {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Failed to save permissions. Check console for errors.\n**Attempted path:** \`${PERMISSIONS_FILE}\``,
+              flags: 64
+            },
+          });
+        }
+      }
     }
 
     console.error(`❌ Unknown command: ${name}`);

@@ -248,6 +248,68 @@ const BANK_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [UTC_COMMAND, HELP_COMMAND, FFROA_COMMAND, CTAREGEAR_COMMAND, FFREGEAR_COMMAND, BANK_COMMAND];
+// Permissions management command
+const PERMS_COMMAND = {
+  name: 'perms',
+  description: 'Manage role permissions (Admin only)',
+  options: [
+    {
+      type: 1, // SUB_COMMAND
+      name: 'list',
+      description: 'View all assigned role permissions',
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'add',
+      description: 'Grant permission to a role',
+      options: [
+        {
+          type: 3, // STRING
+          name: 'type',
+          description: 'Permission type',
+          required: true,
+          choices: [
+            { name: 'Bank Admin', value: 'bank' },
+            { name: 'CTA Regear', value: 'cta' },
+          ],
+        },
+        {
+          type: 8, // ROLE
+          name: 'role',
+          description: 'The role to grant permission to',
+          required: true,
+        },
+      ],
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'remove',
+      description: 'Revoke permission from a role',
+      options: [
+        {
+          type: 3, // STRING
+          name: 'type',
+          description: 'Permission type',
+          required: true,
+          choices: [
+            { name: 'Bank Admin', value: 'bank' },
+            { name: 'CTA Regear', value: 'cta' },
+          ],
+        },
+        {
+          type: 8, // ROLE
+          name: 'role',
+          description: 'The role to revoke permission from',
+          required: true,
+        },
+      ],
+    },
+  ],
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
+
+const ALL_COMMANDS = [UTC_COMMAND, HELP_COMMAND, FFROA_COMMAND, CTAREGEAR_COMMAND, FFREGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
