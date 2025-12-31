@@ -30,6 +30,7 @@ console.log('Interaction received at', Date.now());
 
 // Prefix configuration
 const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
+const PERMISSIONS_FILE = path.join(__dirname, 'permissions-config.json');
 
 function getPrefix() {
   try {
@@ -50,6 +51,64 @@ function setPrefix(newPrefix) {
     console.error('❌ Error saving prefix:', error);
     return false;
   }
+}
+
+// Permission configuration
+function getPermissions() {
+  try {
+    const data = fs.readFileSync(PERMISSIONS_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error reading permissions config:', error);
+    return { bankAdminRoles: [], ctaRegearRoles: [] };
+  }
+}
+
+function savePermissions(config) {
+  try {
+    fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify(config, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.error('Error saving permissions config:', error);
+    return false;
+  }
+}
+
+// Check if user has required permission (Admin OR specified role)
+function hasPermission(member, permissionType) {
+  // Always allow Discord Administrators
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) {
+    return true;
+  }
+
+  // Check if user has any of the specified roles
+  const permissions = getPermissions();
+  const allowedRoles = permissions[permissionType] || [];
+  
+  if (!member.roles || !member.roles.cache) {
+    return false;
+  }
+
+  return member.roles.cache.some(role => allowedRoles.includes(role.id));
+}
+
+// For slash commands (permissions are strings, not objects)
+function hasPermissionSlash(member, permissionType) {
+  // Always allow Discord Administrators
+  if (member && member.permissions && 
+    (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator)) {
+    return true;
+  }
+
+  // Check if user has any of the specified roles
+  const permissions = getPermissions();
+  const allowedRoles = permissions[permissionType] || [];
+  
+  if (!member.roles || allowedRoles.length === 0) {
+    return false;
+  }
+
+  return allowedRoles.some(roleId => member.roles.includes(roleId));
 }
 // Create an express app
 const app = express();
@@ -343,13 +402,12 @@ client.on('messageCreate', async (message) => {
     }
 
     // Check admin permission for admin commands
-    const isAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
+    if (!hasPermission(message.member, 'bankAdminRoles')) {
+      await message.reply('❌ You need Administrator permission or an authorized role to use this command.');
+      return;
+    }
 
     if (subcommand === 'deposit' || subcommand === 'dep') {
-      if (!isAdmin) {
-        await message.reply('❌ You need Administrator permission to use this command.');
-        return;
-      }
 
       const mentionedUser = message.mentions.users.first();
       const amount = parseInt(args[1]);
@@ -376,10 +434,6 @@ client.on('messageCreate', async (message) => {
     }
 
     if (subcommand === 'withdraw' || subcommand === 'with') {
-      if (!isAdmin) {
-        await message.reply('❌ You need Administrator permission to use this command.');
-        return;
-      }
 
       const mentionedUser = message.mentions.users.first();
       const amount = parseInt(args[1]);
@@ -434,10 +488,6 @@ client.on('messageCreate', async (message) => {
     }
 
     if (subcommand === 'clear') {
-      if (!isAdmin) {
-        await message.reply('❌ You need Administrator permission to use this command.');
-        return;
-      }
 
       const mentionedUser = message.mentions.users.first();
 
@@ -468,10 +518,6 @@ client.on('messageCreate', async (message) => {
     }
 
     if (subcommand === 'clearall') {
-      if (!isAdmin) {
-        await message.reply('❌ You need Administrator permission to use this command.');
-        return;
-      }
 
       const result = clearAll();
 
@@ -529,6 +575,109 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
+  // !permissions command - Manage role permissions (Admin only)
+  if (command === 'permissions' || command === 'perms') {
+    const isAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
+    
+    if (!isAdmin) {
+      await message.reply('❌ You need Administrator permission to manage permissions.');
+      return;
+    }
+
+    const subcommand = args[0]?.toLowerCase();
+    const permType = args[1]?.toLowerCase();
+    
+    if (!subcommand || (subcommand !== 'list' && !permType)) {
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🔐 Permission Management')
+        .setDescription(
+          `**Usage:**\n` +
+          `\`${prefix}perms list\` - List all role permissions\n` +
+          `\`${prefix}perms add <bank|cta> @role\` - Add role to permission group\n` +
+          `\`${prefix}perms remove <bank|cta> @role\` - Remove role from permission group\n\n` +
+          `**Permission Types:**\n` +
+          `• \`bank\` - Can use bank deposit/withdraw/clear commands\n` +
+          `• \`cta\` - Can use /ctaregear command`
+        );
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (subcommand === 'list') {
+      const permissions = getPermissions();
+      const bankRoles = permissions.bankAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
+      const ctaRoles = permissions.ctaRegearRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
+      
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🔐 Current Role Permissions')
+        .addFields(
+          { name: '💰 Bank Admin Roles', value: bankRoles, inline: false },
+          { name: '⚔️ CTA Regear Roles', value: ctaRoles, inline: false }
+        )
+        .setFooter({ text: 'Administrators always have access to all commands' });
+      
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    const role = message.mentions.roles.first();
+    if (!role) {
+      await message.reply(`❌ Please mention a role. Usage: \`${prefix}perms ${subcommand} <bank|cta> @role\``);
+      return;
+    }
+
+    let configKey;
+    let displayName;
+    if (permType === 'bank') {
+      configKey = 'bankAdminRoles';
+      displayName = 'Bank Admin';
+    } else if (permType === 'cta') {
+      configKey = 'ctaRegearRoles';
+      displayName = 'CTA Regear';
+    } else {
+      await message.reply(`❌ Invalid permission type. Use \`bank\` or \`cta\`.`);
+      return;
+    }
+
+    const permissions = getPermissions();
+
+    if (subcommand === 'add') {
+      if (permissions[configKey].includes(role.id)) {
+        await message.reply(`❌ Role ${role} already has ${displayName} permission.`);
+        return;
+      }
+      
+      permissions[configKey].push(role.id);
+      if (savePermissions(permissions)) {
+        await message.reply(`✅ Added ${role} to ${displayName} permissions.`);
+      } else {
+        await message.reply('❌ Failed to save permissions.');
+      }
+      return;
+    }
+
+    if (subcommand === 'remove') {
+      const index = permissions[configKey].indexOf(role.id);
+      if (index === -1) {
+        await message.reply(`❌ Role ${role} doesn't have ${displayName} permission.`);
+        return;
+      }
+      
+      permissions[configKey].splice(index, 1);
+      if (savePermissions(permissions)) {
+        await message.reply(`✅ Removed ${role} from ${displayName} permissions.`);
+      } else {
+        await message.reply('❌ Failed to save permissions.');
+      }
+      return;
+    }
+
+    await message.reply(`❌ Invalid subcommand. Use \`add\`, \`remove\`, or \`list\`.`);
+    return;
+  }
+
   // !help command
   if (command === 'help' || command === 'commands') {
     const embed = new EmbedBuilder()
@@ -543,10 +692,14 @@ client.on('messageCreate', async (message) => {
         `• \`${prefix}bank active\` - List all bank users\n\n` +
         `**🛡️ Admin Commands** (Requires Admin Permissions):\n` +
         `• \`${prefix}prefix <new>\` - Change prefix\n` +
-        `• \`${prefix}bank deposit @user <amount>\` - Deposit silver\n` +
-        `• \`${prefix}bank withdraw @user <amount>\` - Withdraw silver\n` +
-        `• \`${prefix}bank clear @user\` - Clear user balance\n` +
-        `• \`${prefix}bank clearall\` - Clear all balances\n\n` +
+        `• \`${prefix}perms list\` - View role permissions\n` +
+        `• \`${prefix}perms add <bank|cta> @role\` - Grant role permission\n` +
+        `• \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission\n` +
+        `• \`${prefix}bank deposit @user <amount>\` - Deposit silver (Admin or authorized role)\n` +
+        `• \`${prefix}bank withdraw @user <amount>\` - Withdraw silver (Admin or authorized role)\n` +
+        `• \`${prefix}bank clear @user\` - Clear user balance (Admin or authorized role)\n` +
+        `• \`${prefix}bank clearall\` - Clear all balances (Admin or authorized role)\n\n` +
+        `**Note:** Commands marked with "(Admin or authorized role)" can be used by roles assigned via \`${prefix}perms\`\n\n` +
         `*Slash commands (/) are also available! Use \`/help\` for an interactive menu.*`
       )
       .setFooter({ text: 'South PH - Albion Online Guild Bot' });
@@ -860,6 +1013,19 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     // "/ctaregear" command - Create CTA regear thread
     if (name === 'ctaregear') {
       console.log('⚔️ Executing /ctaregear command');
+      
+      // Check permission
+      const member = req.body.member;
+      if (!hasPermissionSlash(member, 'ctaRegearRoles')) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ You need Administrator permission or an authorized role to use this command.',
+            flags: 64 // EPHEMERAL
+          },
+        });
+      }
+      
       const threadTitle = data.options[0].value;
       const channelId = req.body.channel_id;
 
@@ -1014,16 +1180,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const member = req.body.member;
 
       // Check admin permission for deposit/withdraw
-      const isAdmin = member && member.permissions && 
-        (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator);
+      const hasAdminPermission = hasPermissionSlash(member, 'bankAdminRoles');
 
       // Subcommand: deposit
       if (subcommand === 'deposit') {
-        if (!isAdmin) {
+        if (!hasAdminPermission) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ You need Administrator permission to use this command.',
+              content: '❌ You need Administrator permission or an authorized role to use this command.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1064,11 +1229,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: withdraw
       if (subcommand === 'withdraw') {
-        if (!isAdmin) {
+        if (!hasAdminPermission) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ You need Administrator permission to use this command.',
+              content: '❌ You need Administrator permission or an authorized role to use this command.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1163,11 +1328,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: clear
       if (subcommand === 'clear') {
-        if (!isAdmin) {
+        if (!hasAdminPermission) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ You need Administrator permission to use this command.',
+              content: '❌ You need Administrator permission or an authorized role to use this command.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1206,11 +1371,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: clearall
       if (subcommand === 'clearall') {
-        if (!isAdmin) {
+        if (!hasAdminPermission) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ You need Administrator permission to use this command.',
+              content: '❌ You need Administrator permission or an authorized role to use this command.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1310,6 +1475,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         `**Regear & Event Commands:**\n` +
         `• \`/ctaregear [title]\` - Create a CTA (Call to Action) regear thread\n` +
         `• \`/ffregear [title]\` - Create a FF (Faction Warfare) regear thread\n\n` +
+        `**FFROA Participation:**\n` +
+        `In an active FFROA thread, use these commands:\n` +
+        `• \`x [role]\` - Claim a specific role (tank, heal, shadowcaller, blazing, mp, mp2, flex)\n` +
+        `• \`x fill\` - Sign up to fill any remaining slots automatically\n` +
+        `_Example: Type "x tank" or "x fill" in the FFROA thread_\n\n` +
         `_Need admin commands? Click the Admin Commands button!_`;
 
       return res.send({
@@ -1324,20 +1494,27 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     // Admin Commands button
     if (componentId === 'help_admin_commands') {
       const prefix = process.env.DEFAULT_PREFIX || '!';
-      const adminCommandsMessage = `🛡️ **Admin Commands** - Requires Administrator Permissions\n\n` +
+      const adminCommandsMessage = `🛡️ **Admin Commands** - Requires Administrator Permissions or Authorized Role\n\n` +
         `**Prefix Management:**\n` +
-        `• \`${prefix}prefix <new>\` - Change the bot's text command prefix\n\n` +
+        `• \`${prefix}prefix <new>\` - Change the bot's text command prefix (Admin only)\n\n` +
+        `**Permission Management:**\n` +
+        `• \`${prefix}perms list\` - View all role permissions (Admin only)\n` +
+        `• \`${prefix}perms add <bank|cta> @role\` - Grant role permission (Admin only)\n` +
+        `• \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission (Admin only)\n\n` +
         `**Bank Management:**\n` +
         `• \`/bank deposit @user <amount>\` or \`${prefix}bank deposit @user <amount>\` - Add silver to a user's account\n` +
         `• \`/bank withdraw @user <amount>\` or \`${prefix}bank withdraw @user <amount>\` - Remove silver from a user's account\n` +
         `• \`/bank clear @user\` or \`${prefix}bank clear @user\` - Clear a specific user's balance\n` +
         `• \`/bank clearall\` or \`${prefix}bank clearall\` - Clear all user balances (use with caution!)\n\n` +
+        `**Regear Commands:**\n` +
+        `• \`/ctaregear [title]\` - Create a CTA regear thread\n\n` +
         `**FF ROA Management:**\n` +
         `• \`/ffroa create\` - Create a new FF ROA (Return on Assets) callout\n` +
         `• \`/ffroa reset\` - Reset the current FF ROA callout\n` +
         `• \`/ffroa adduser\` - Add a user to a role in the FF ROA\n` +
         `• \`/ffroa removeuser\` - Remove a user from a role in the FF ROA\n\n` +
-        `_These commands require administrator permissions to use._`;
+        `**Note:** Bank and CTA commands can be used by roles assigned via \`${prefix}perms\` command.\n` +
+        `_Administrators always have access to all commands._`;
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
