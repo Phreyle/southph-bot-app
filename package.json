@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node app.js",
     "register": "node commands.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon --inspect app.js"
   },
   "author": "Phresh",
   "dependencies": {

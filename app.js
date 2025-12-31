@@ -1147,9 +1147,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         `**Available Commands:**\n` +
         `• \`/help\` - Show this help message\n\n` +
         `• \`/utc\` - Display current UTC time (Albion Online in-game time)\n` +
-        `• \`/ffroa create [role] [title]\` - Create FFROA role callout\n` +
         `• \`/ctaregear [title]\` - Create CTA regear thread\n` +
         `• \`/ffregear [title]\` - Create FF regear thread\n` +
+        `• \`/ffroa create/reset/adduser/removeuser\` - Create FFROA role callout\n` +
         `• \`/bank deposit/withdraw/balance/active/clear/clearall\` - Bank economy system\n` +
         `*More commands coming soon!*`;
 
