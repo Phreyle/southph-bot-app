@@ -81,7 +81,8 @@ const ffroaState = {
     mp: null,
     mp2: null,
     flex: null
-  }
+  },
+  fill: [] // Array of user IDs who want to fill any remaining slots
 };
 // Create a Discord client
 const client = new Client({ 
@@ -107,13 +108,27 @@ const buildFFROAEmbed = () => {
     `**6. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${ffroaState.roles.mp2 ? '➡️ <@' + ffroaState.roles.mp2 + '>' : ''}`,
     `**7. ${CUSTOM_EMOJIS.DPS} MP / LC / ARCTIC / PERMA**   ${ffroaState.roles.flex ? '➡️ <@' + ffroaState.roles.flex + '>' : ''}`
   ];
+  
+  // Count filled slots
+  const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
+  const totalSlots = 7;
+  const fillCount = ffroaState.fill.length;
+  
+  // Build fill section
+  let fillSection = '';
+  if (fillCount > 0) {
+    fillSection = `\n\n**🔄 FILL (${fillCount}):** ${ffroaState.fill.map(id => `<@${id}>`).join(', ')}`;
+  }
+  
   return new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle('🛡️ FFROA Role Call')
     .setDescription(
       `**__X UP ROLE!__**\n` +
-      `**Location:** ${ffroaState.location}\n**Gear:** T${ffroaState.tier} Sets\n\n` +
+      `**Location:** ${ffroaState.location}\n**Gear:** T${ffroaState.tier} Sets\n` +
+      `**Status:** ${filledSlots + fillCount}/${totalSlots} ${fillCount > 0 ? `(${fillCount} FILL)` : ''}\n\n` +
       roleLines.join('\n') +
+      fillSection +
       `\n\n**Builds Thread:** <#1422948227405316208>`
     );
 };
@@ -140,11 +155,61 @@ client.on('messageCreate', async (message) => {
       flex: /^x\s+(flex|f|perma|arctic|LC)$/i
     };
 
+    // Check for "x fill" command
+    if (/^x\s+fill$/i.test(content)) {
+      // Check if user is already in fill
+      if (ffroaState.fill.includes(message.author.id)) {
+        await message.react('ℹ️');
+        return;
+      }
+
+      // Check if user already has a role - remove them from it
+      for (const [roleKey, userId] of Object.entries(ffroaState.roles)) {
+        if (userId === message.author.id) {
+          ffroaState.roles[roleKey] = null;
+          break;
+        }
+      }
+
+      // Add to fill list
+      ffroaState.fill.push(message.author.id);
+
+      // Check if we can auto-assign fill players
+      await autoAssignFillPlayers();
+
+      try {
+        const embed = buildFFROAEmbed();
+        await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
+          method: 'PATCH',
+          body: {
+            embeds: [embed.toJSON()]
+          },
+        });
+        await message.react('🔄');
+      } catch (err) {
+        console.error('Error updating FFROA message:', err);
+        await message.reply('❌ Failed to update the FFROA board.');
+      }
+      return;
+    }
+
     let assignedRole = null;
 
     // Check which role the user is claiming
     for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
       if (pattern.test(content)) {
+        // Count filled slots and fill players
+        const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
+        const fillCount = ffroaState.fill.length;
+        const totalSlots = 7;
+        const availableSlots = totalSlots - filledSlots - fillCount;
+
+        // Check if there are available slots (considering fill players reserve slots)
+        if (availableSlots <= 0 && !ffroaState.roles[roleKey]) {
+          await message.reply(`❌ No slots available! ${fillCount} slot(s) are reserved for FILL players. Current status: ${filledSlots + fillCount}/${totalSlots}`);
+          return;
+        }
+
         // Check if role is already taken by someone else
         if (ffroaState.roles[roleKey] && ffroaState.roles[roleKey] !== message.author.id) {
           await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${ffroaState.roles[roleKey]}>!`);
@@ -164,6 +229,12 @@ client.on('messageCreate', async (message) => {
           }
         }
 
+        // Remove user from fill list if they were in it
+        const fillIndex = ffroaState.fill.indexOf(message.author.id);
+        if (fillIndex > -1) {
+          ffroaState.fill.splice(fillIndex, 1);
+        }
+
         // Assign the new role
         ffroaState.roles[roleKey] = message.author.id;
         assignedRole = roleKey;
@@ -171,8 +242,11 @@ client.on('messageCreate', async (message) => {
       }
     }
 
-    // If a role was assigned, update the FFROA message
+    // If a role was assigned, update the FFROA message and check for auto-assignment
     if (assignedRole) {
+      // Check if we need to auto-assign fill players
+      await autoAssignFillPlayers();
+
       try {
         const embed = buildFFROAEmbed();
         await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
@@ -189,6 +263,35 @@ client.on('messageCreate', async (message) => {
       }
     }
     return;
+  }
+
+  // Auto-assign fill players to empty slots
+  async function autoAssignFillPlayers() {
+    const roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'mp', 'mp2', 'flex'];
+    
+    while (ffroaState.fill.length > 0) {
+      // Find first empty slot
+      const emptySlot = roleKeys.find(key => ffroaState.roles[key] === null);
+      
+      if (!emptySlot) {
+        // No empty slots, break
+        break;
+      }
+
+      // Assign first fill player to empty slot
+      const fillPlayerId = ffroaState.fill.shift();
+      ffroaState.roles[emptySlot] = fillPlayerId;
+
+      // Try to notify the player (optional, might need channel reference)
+      try {
+        const channel = await client.channels.fetch(ffroaState.threadId);
+        if (channel) {
+          await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}**!`);
+        }
+      } catch (err) {
+        console.error('Error notifying fill player:', err);
+      }
+    }
   }
 
   // Handle text commands with prefix
