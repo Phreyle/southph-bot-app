@@ -133,6 +133,35 @@ const buildFFROAEmbed = () => {
     );
 };
 
+// Auto-assign fill players to empty slots
+async function autoAssignFillPlayers() {
+  const roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'mp', 'mp2', 'flex'];
+  
+  while (ffroaState.fill.length > 0) {
+    // Find first empty slot
+    const emptySlot = roleKeys.find(key => ffroaState.roles[key] === null);
+    
+    if (!emptySlot) {
+      // No empty slots, break
+      break;
+    }
+
+    // Assign first fill player to empty slot
+    const fillPlayerId = ffroaState.fill.shift();
+    ffroaState.roles[emptySlot] = fillPlayerId;
+
+    // Try to notify the player
+    try {
+      const channel = await client.channels.fetch(ffroaState.threadId);
+      if (channel) {
+        await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}**!`);
+      }
+    } catch (err) {
+      console.error('Error notifying fill player:', err);
+    }
+  }
+}
+
 // Listen for messages in the FFROA thread
 client.on('messageCreate', async (message) => {
   // Ignore bot messages
@@ -265,34 +294,6 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // Auto-assign fill players to empty slots
-  async function autoAssignFillPlayers() {
-    const roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'mp', 'mp2', 'flex'];
-    
-    while (ffroaState.fill.length > 0) {
-      // Find first empty slot
-      const emptySlot = roleKeys.find(key => ffroaState.roles[key] === null);
-      
-      if (!emptySlot) {
-        // No empty slots, break
-        break;
-      }
-
-      // Assign first fill player to empty slot
-      const fillPlayerId = ffroaState.fill.shift();
-      ffroaState.roles[emptySlot] = fillPlayerId;
-
-      // Try to notify the player (optional, might need channel reference)
-      try {
-        const channel = await client.channels.fetch(ffroaState.threadId);
-        if (channel) {
-          await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}**!`);
-        }
-      } catch (err) {
-        console.error('Error notifying fill player:', err);
-      }
-    }
-  }
 
   // Handle text commands with prefix
   if (!message.content.startsWith(prefix)) return;
