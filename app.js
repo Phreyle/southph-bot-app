@@ -7,9 +7,6 @@ import { fileURLToPath } from 'url';
 import {
   InteractionType,
   InteractionResponseType,
-  InteractionResponseFlags,
-  MessageComponentTypes,
-  ButtonStyleTypes,
   verifyKeyMiddleware,
 } from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
@@ -109,6 +106,78 @@ function hasPermissionSlash(member, permissionType) {
   }
 
   return allowedRoles.some(roleId => member.roles.includes(roleId));
+}
+
+// Build help embed based on user permissions
+function buildHelpEmbed(member, isSlashCommand = false) {
+  const prefix = getPrefix();
+  
+  // Check permissions
+  const isAdmin = isSlashCommand 
+    ? (member && member.permissions && (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator))
+    : (member && member.permissions && member.permissions.has(PermissionFlagsBits.Administrator));
+  
+  const hasBankPerms = isSlashCommand 
+    ? hasPermissionSlash(member, 'bankAdminRoles')
+    : hasPermission(member, 'bankAdminRoles');
+  
+  const hasCtaPerms = isSlashCommand 
+    ? hasPermissionSlash(member, 'ctaRegearRoles')
+    : hasPermission(member, 'ctaRegearRoles');
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('📖 South PH Bot - Command Help')
+    .setFooter({ text: 'South PH - Albion Online Guild Bot' })
+    .setTimestamp();
+
+  let description = `**Current Prefix:** \`${prefix}\`\n\n`;
+
+  // User Commands (Always shown)
+  description += `**👤 User Commands** (Available to All Members):\n`;
+  description += `• \`/help\` or \`${prefix}help\` - Show this help menu\n`;
+  description += `• \`/utc\` or \`${prefix}utc\` - Display current UTC time\n`;
+  description += `• \`/bank balance [@user]\` or \`${prefix}bal [@user]\` - Check balance\n`;
+  description += `• \`/bank active\` or \`${prefix}bank active\` - List all bank users\n`;
+  description += `• In FFROA threads: \`x [role]\` - Claim a role (tank, heal, etc.)\n`;
+  description += `• In FFROA threads: \`x fill\` - Sign up to fill any slot\n\n`;
+
+  // Bank Admin Commands
+  if (hasBankPerms || isAdmin) {
+    description += `**💰 Bank Admin Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
+    description += `• \`/bank deposit @user <amount>\` or \`${prefix}bank deposit @user <amount>\`\n`;
+    description += `• \`/bank withdraw @user <amount>\` or \`${prefix}bank withdraw @user <amount>\`\n`;
+    description += `• \`/bank clear @user\` or \`${prefix}bank clear @user\`\n`;
+    description += `• \`/bank clearall\` or \`${prefix}bank clearall\`\n\n`;
+  }
+
+  // CTA Regear Commands
+  if (hasCtaPerms || isAdmin) {
+    description += `**⚔️ Regear Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
+    description += `• \`/ctaregear [title]\` - Create a CTA regear thread\n`;
+    description += `• \`/ffregear [title]\` - Create a FF regear thread\n\n`;
+  }
+
+  // Full Admin Commands (Only for Discord Administrators)
+  if (isAdmin) {
+    description += `**🛡️ Administrator Commands** (Discord Admin Only):\n`;
+    description += `• \`${prefix}prefix <new>\` - Change bot prefix\n`;
+    description += `• \`${prefix}perms list\` - View role permissions\n`;
+    description += `• \`${prefix}perms add <bank|cta> @role\` - Grant role permission\n`;
+    description += `• \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission\n`;
+    description += `• \`/ffroa create\` - Create FF ROA callout\n`;
+    description += `• \`/ffroa reset\` - Reset FF ROA callout\n`;
+    description += `• \`/ffroa adduser\` - Add user to FF ROA role\n`;
+    description += `• \`/ffroa removeuser\` - Remove user from FF ROA role\n\n`;
+  }
+
+  // Show permission status if user has special permissions
+  if (!isAdmin && (hasBankPerms || hasCtaPerms)) {
+    description += `*You have special permissions granted via role assignment.*\n`;
+  }
+
+  embed.setDescription(description);
+  return embed;
 }
 // Create an express app
 const app = express();
@@ -680,30 +749,7 @@ client.on('messageCreate', async (message) => {
 
   // !help command
   if (command === 'help' || command === 'commands') {
-    const embed = new EmbedBuilder()
-      .setColor(0x5865F2)
-      .setTitle('📖 South PH Bot - Command Help')
-      .setDescription(
-        `**Current Prefix:** \`${prefix}\`\n\n` +
-        `**👤 User Commands** (Available to All Members):\n` +
-        `• \`${prefix}help\` - Show this help message\n` +
-        `• \`${prefix}utc\` or \`${prefix}time\` - Display UTC time\n` +
-        `• \`${prefix}bal [@user]\` - Check balance\n` +
-        `• \`${prefix}bank active\` - List all bank users\n\n` +
-        `**🛡️ Admin Commands** (Requires Admin Permissions):\n` +
-        `• \`${prefix}prefix <new>\` - Change prefix\n` +
-        `• \`${prefix}perms list\` - View role permissions\n` +
-        `• \`${prefix}perms add <bank|cta> @role\` - Grant role permission\n` +
-        `• \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission\n` +
-        `• \`${prefix}bank deposit @user <amount>\` - Deposit silver (Admin or authorized role)\n` +
-        `• \`${prefix}bank withdraw @user <amount>\` - Withdraw silver (Admin or authorized role)\n` +
-        `• \`${prefix}bank clear @user\` - Clear user balance (Admin or authorized role)\n` +
-        `• \`${prefix}bank clearall\` - Clear all balances (Admin or authorized role)\n\n` +
-        `**Note:** Commands marked with "(Admin or authorized role)" can be used by roles assigned via \`${prefix}perms\`\n\n` +
-        `*Slash commands (/) are also available! Use \`/help\` for an interactive menu.*`
-      )
-      .setFooter({ text: 'South PH - Albion Online Guild Bot' });
-
+    const embed = buildHelpEmbed(message.member, false);
     await message.reply({ embeds: [embed] });
     return;
   }
@@ -1414,39 +1460,14 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     // "/help" command - Show available commands
     if (name === 'help') {
       console.log('❓ Executing /help command');
-      const welcomeMessage = `📖 **South PH Bot - Command Help**\n\n` +
-        `Welcome! Choose which commands you'd like to see:\n` +
-        `• **User Commands** - Available to all members\n` +
-        `• **Admin Commands** - Requires administrator permissions\n\n` +
-        `_Click the buttons below to view commands_`;
+      const member = req.body.member;
+      const embed = buildHelpEmbed(member, true);
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-          components: [
-            {
-              type: MessageComponentTypes.TEXT_DISPLAY,
-              content: welcomeMessage
-            },
-            {
-              type: MessageComponentTypes.ACTION_ROW,
-              components: [
-                {
-                  type: MessageComponentTypes.BUTTON,
-                  custom_id: 'help_user_commands',
-                  label: '👤 User Commands',
-                  style: ButtonStyleTypes.PRIMARY,
-                },
-                {
-                  type: MessageComponentTypes.BUTTON,
-                  custom_id: 'help_admin_commands',
-                  label: '🛡️ Admin Commands',
-                  style: ButtonStyleTypes.SECONDARY,
-                },
-              ],
-            },
-          ],
+          embeds: [embed.toJSON()],
+          flags: 64 // EPHEMERAL
         },
       });
     }
@@ -1462,68 +1483,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     const componentId = data.custom_id;
     console.log(`🔘 Processing button interaction: ${componentId}`);
 
-    // User Commands button
-    if (componentId === 'help_user_commands') {
-      const prefix = process.env.DEFAULT_PREFIX || '!';
-      const userCommandsMessage = `👤 **User Commands** - Available to All Members\n\n` +
-        `**General Commands:**\n` +
-        `• \`/help\` or \`${prefix}help\` - Show this help menu\n` +
-        `• \`/utc\` or \`${prefix}utc\` - Display current UTC time (Albion Online in-game time)\n\n` +
-        `**Bank Commands:**\n` +
-        `• \`/bank balance [@user]\` or \`${prefix}bal [@user]\` - Check your balance or another user's balance\n` +
-        `• \`/bank active\` or \`${prefix}bank active\` - View all active bank users\n\n` +
-        `**Regear & Event Commands:**\n` +
-        `• \`/ctaregear [title]\` - Create a CTA (Call to Action) regear thread\n` +
-        `• \`/ffregear [title]\` - Create a FF (Faction Warfare) regear thread\n\n` +
-        `**FFROA Participation:**\n` +
-        `In an active FFROA thread, use these commands:\n` +
-        `• \`x [role]\` - Claim a specific role (tank, heal, shadowcaller, blazing, mp, mp2, flex)\n` +
-        `• \`x fill\` - Sign up to fill any remaining slots automatically\n` +
-        `_Example: Type "x tank" or "x fill" in the FFROA thread_\n\n` +
-        `_Need admin commands? Click the Admin Commands button!_`;
-
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: 64, // EPHEMERAL - only visible to the user who clicked
-          content: userCommandsMessage
-        },
-      });
-    }
-
-    // Admin Commands button
-    if (componentId === 'help_admin_commands') {
-      const prefix = process.env.DEFAULT_PREFIX || '!';
-      const adminCommandsMessage = `🛡️ **Admin Commands** - Requires Administrator Permissions or Authorized Role\n\n` +
-        `**Prefix Management:**\n` +
-        `• \`${prefix}prefix <new>\` - Change the bot's text command prefix (Admin only)\n\n` +
-        `**Permission Management:**\n` +
-        `• \`${prefix}perms list\` - View all role permissions (Admin only)\n` +
-        `• \`${prefix}perms add <bank|cta> @role\` - Grant role permission (Admin only)\n` +
-        `• \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission (Admin only)\n\n` +
-        `**Bank Management:**\n` +
-        `• \`/bank deposit @user <amount>\` or \`${prefix}bank deposit @user <amount>\` - Add silver to a user's account\n` +
-        `• \`/bank withdraw @user <amount>\` or \`${prefix}bank withdraw @user <amount>\` - Remove silver from a user's account\n` +
-        `• \`/bank clear @user\` or \`${prefix}bank clear @user\` - Clear a specific user's balance\n` +
-        `• \`/bank clearall\` or \`${prefix}bank clearall\` - Clear all user balances (use with caution!)\n\n` +
-        `**Regear Commands:**\n` +
-        `• \`/ctaregear [title]\` - Create a CTA regear thread\n\n` +
-        `**FF ROA Management:**\n` +
-        `• \`/ffroa create\` - Create a new FF ROA (Return on Assets) callout\n` +
-        `• \`/ffroa reset\` - Reset the current FF ROA callout\n` +
-        `• \`/ffroa adduser\` - Add a user to a role in the FF ROA\n` +
-        `• \`/ffroa removeuser\` - Remove a user from a role in the FF ROA\n\n` +
-        `**Note:** Bank and CTA commands can be used by roles assigned via \`${prefix}perms\` command.\n` +
-        `_Administrators always have access to all commands._`;
-
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: 64, // EPHEMERAL - only visible to the user who clicked
-          content: adminCommandsMessage
-        },
-      });
-    }
+    // Handle FFROA button clicks (if you have any other button interactions)
+    // Add other button handlers here if needed
 
     console.error(`❌ Unknown component ID: ${componentId}`);
     return res.status(400).json({ error: 'unknown component' });
