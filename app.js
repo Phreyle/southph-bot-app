@@ -344,144 +344,136 @@ async function extractMarketValueFromImage(imageUrl) {
     
     // Download the image
     const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-    let imageBuffer = Buffer.from(response.data, 'binary');
+    const originalBuffer = Buffer.from(response.data, 'binary');
     
-    // Preprocess the image for better OCR
-    console.log('🖼️ Preprocessing image for better OCR...');
-    imageBuffer = await sharp(imageBuffer)
-      .greyscale() // Convert to grayscale
-      .normalize() // Normalize contrast
-      .sharpen() // Sharpen edges
-      .resize({ width: 2000, fit: 'inside', withoutEnlargement: false }) // Upscale if needed
-      .toBuffer();
-    
-    // Create OCR worker
-    const worker = await createWorker('eng', 1, {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          console.log(`   OCR Progress: ${Math.round(m.progress * 100)}%`);
-        }
+    // Try multiple preprocessing techniques
+    const preprocessingTechniques = [
+      {
+        name: 'High Contrast B&W',
+        process: async (buf) => sharp(buf)
+          .greyscale()
+          .normalize()
+          .threshold(128) // Binary threshold for stark contrast
+          .resize({ width: 3000, fit: 'inside', withoutEnlargement: false })
+          .toBuffer()
+      },
+      {
+        name: 'Enhanced Sharpening',
+        process: async (buf) => sharp(buf)
+          .greyscale()
+          .normalize()
+          .sharpen({ sigma: 2 })
+          .modulate({ brightness: 1.2, contrast: 1.5 })
+          .resize({ width: 3000, fit: 'inside', withoutEnlargement: false })
+          .toBuffer()
+      },
+      {
+        name: 'Inverted Colors',
+        process: async (buf) => sharp(buf)
+          .greyscale()
+          .normalize()
+          .negate()
+          .sharpen()
+          .resize({ width: 2500, fit: 'inside', withoutEnlargement: false })
+          .toBuffer()
       }
-    });
-    
-    // Set OCR parameters for better number recognition
-    await worker.setParameters({
-      tessedit_char_whitelist: '0123456789,.KMkmEestMarkvlueVOo :⚪◯○',
-    });
-    
-    // Process the image
-    const { data: { text } } = await worker.recognize(imageBuffer);
-    await worker.terminate();
-    
-    console.log('📝 Raw OCR Text:');
-    console.log('----------------------------------------');
-    console.log(text);
-    console.log('----------------------------------------');
-    
-    // Clean up the text - remove extra spaces and newlines
-    const cleanedText = text.replace(/\s+/g, ' ').trim();
-    console.log('🧹 Cleaned Text:', cleanedText);
-    
-    // Try multiple pattern matching strategies
-    console.log('🔎 Attempting pattern matching...');
-    
-    // Strategy 1: Look for "Est" or "Market" or "Value" followed by numbers
-    const patterns = [
-      // Exact patterns
-      /Est\.?\s*Market\s*Value[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
-      /Market\s*Value[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
-      /Est\.?\s*Market[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
-      /Est\.?\s*Value[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
-      // Look for any of these words near numbers
-      /Est[^\d]{0,30}?([0-9]{3,}[,0-9]*)/i,
-      /Market[^\d]{0,30}?([0-9]{3,}[,0-9]*)/i,
-      /Value[^\d]{0,30}?([0-9]{3,}[,0-9]*)/i,
     ];
     
-    for (let i = 0; i < patterns.length; i++) {
-      const pattern = patterns[i];
-      const match = text.match(pattern);
-      if (match && match[1]) {
-        const value = match[1].trim();
-        console.log(`✅ Found market value (Pattern ${i + 1}):`, value);
-        return value;
-      }
-    }
+    let allExtractedText = [];
     
-    // Strategy 2: Look for lines containing specific keywords and extract nearby numbers
-    console.log('🔎 Trying line-by-line analysis...');
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lowerLine = line.toLowerCase();
+    // Try each preprocessing technique
+    for (const technique of preprocessingTechniques) {
+      console.log(`🖼️ Trying preprocessing: ${technique.name}...`);
+      const processedBuffer = await technique.process(originalBuffer);
       
-      // Check if line contains market/value related words
-      if (lowerLine.includes('market') || lowerLine.includes('value') || lowerLine.includes('est')) {
-        console.log(`   Found relevant line ${i}: "${line}"`);
-        
-        // Extract numbers from this line and nearby lines
-        for (let j = Math.max(0, i - 1); j < Math.min(lines.length, i + 3); j++) {
-          const numberMatch = lines[j].match(/\b([0-9]{3,}[,0-9]*(?:\.[0-9]+)?[KkMm]?)\b/);
-          if (numberMatch) {
-            console.log(`✅ Found number near market value keyword:`, numberMatch[1]);
-            return numberMatch[1];
+      // Try multiple OCR configurations
+      const ocrConfigs = [
+        { name: 'Numbers Only', params: { tessedit_char_whitelist: '0123456789,.', tessedit_pageseg_mode: '6' } },
+        { name: 'With Text', params: { tessedit_char_whitelist: '0123456789,.EestMarkvlueVOo ', tessedit_pageseg_mode: '6' } },
+        { name: 'Default', params: { tessedit_pageseg_mode: '11' } }
+      ];
+      
+      for (const config of ocrConfigs) {
+        try {
+          const worker = await createWorker('eng');
+          await worker.setParameters(config.params);
+          const { data: { text } } = await worker.recognize(processedBuffer);
+          await worker.terminate();
+          
+          if (text && text.trim().length > 0) {
+            console.log(`   📝 ${technique.name} + ${config.name}: "${text.substring(0, 100).replace(/\n/g, ' ')}..."`);
+            allExtractedText.push(text);
           }
+        } catch (err) {
+          console.log(`   ⚠️ ${technique.name} + ${config.name} failed:`, err.message);
         }
       }
     }
     
-    // Strategy 3: Find the largest number with commas (likely to be market value)
-    console.log('🔎 Looking for largest comma-separated number...');
-    const numbersWithCommas = text.match(/\b[0-9]{1,3}(?:,[0-9]{3})+\b/g);
-    if (numbersWithCommas && numbersWithCommas.length > 0) {
-      const largest = numbersWithCommas.reduce((max, num) => {
-        const maxVal = parseInt(max.replace(/,/g, ''));
-        const numVal = parseInt(num.replace(/,/g, ''));
-        return numVal > maxVal ? num : max;
-      });
-      console.log(`✅ Found largest comma-separated number:`, largest);
-      return largest;
+    console.log(`\n📊 Total OCR attempts: ${allExtractedText.length}`);
+    console.log('🔎 Analyzing all extracted text for market value...\n');
+    
+    // Now analyze all extracted text
+    for (let i = 0; i < allExtractedText.length; i++) {
+      const text = allExtractedText[i];
+      
+      // Strategy 1: Look for comma-separated numbers (most reliable for market values)
+      const commaNumbers = text.match(/\b[0-9]{1,3}(?:,[0-9]{3})+\b/g);
+      if (commaNumbers && commaNumbers.length > 0) {
+        // Sort by value and return largest
+        const largest = commaNumbers.sort((a, b) => {
+          const aVal = parseInt(a.replace(/,/g, ''));
+          const bVal = parseInt(b.replace(/,/g, ''));
+          return bVal - aVal;
+        })[0];
+        
+        const numericValue = parseInt(largest.replace(/,/g, ''));
+        // Market values are typically > 1000
+        if (numericValue >= 1000) {
+          console.log(`✅ Found comma-separated number (Pass ${i + 1}):`, largest);
+          return largest;
+        }
+      }
+      
+      // Strategy 2: Look for any 6-7 digit numbers (without commas)
+      const largeNumbers = text.match(/\b[0-9]{6,7}\b/g);
+      if (largeNumbers && largeNumbers.length > 0) {
+        const largest = largeNumbers.sort((a, b) => parseInt(b) - parseInt(a))[0];
+        // Add commas for readability
+        const formatted = parseInt(largest).toLocaleString('en-US');
+        console.log(`✅ Found large number (Pass ${i + 1}):`, formatted);
+        return formatted;
+      }
     }
     
-    // Strategy 4: Find any large number (100+)
-    console.log('🔎 Looking for any large numbers...');
-    const allNumbers = text.match(/\b([0-9]{3,}[,0-9]*)\b/g);
-    if (allNumbers && allNumbers.length > 0) {
-      // Sort by numeric value
-      const sorted = allNumbers.sort((a, b) => {
-        const aVal = parseInt(a.replace(/,/g, ''));
-        const bVal = parseInt(b.replace(/,/g, ''));
-        return bVal - aVal;
-      });
-      console.log(`⚠️ Fallback - Found large numbers:`, sorted.slice(0, 3));
-      return sorted[0];
+    // Strategy 3: Look for ANY numbers and return the largest
+    console.log('🔎 Fallback: Looking for any numbers...');
+    let allNumbers = [];
+    for (const text of allExtractedText) {
+      const numbers = text.match(/\b[0-9,]+\b/g);
+      if (numbers) {
+        allNumbers = allNumbers.concat(numbers);
+      }
     }
     
-    // Strategy 5: Try again without character whitelist (last resort)
-    console.log('🔄 Retrying OCR without restrictions...');
-    const worker2 = await createWorker('eng');
-    const { data: { text: text2 } } = await worker2.recognize(imageBuffer);
-    await worker2.terminate();
-    
-    console.log('📝 Second pass OCR Text:');
-    console.log('----------------------------------------');
-    console.log(text2);
-    console.log('----------------------------------------');
-    
-    // Try to find market value in second pass
-    const secondPassNumbers = text2.match(/\b([0-9]{3,}[,0-9]*)\b/g);
-    if (secondPassNumbers && secondPassNumbers.length > 0) {
-      const largest = secondPassNumbers.sort((a, b) => {
-        const aVal = parseInt(a.replace(/,/g, ''));
-        const bVal = parseInt(b.replace(/,/g, ''));
-        return bVal - aVal;
-      })[0];
-      console.log(`✅ Second pass found number:`, largest);
-      return largest;
+    if (allNumbers.length > 0) {
+      const sorted = allNumbers
+        .map(n => n.replace(/,/g, ''))
+        .filter(n => parseInt(n) >= 100) // At least 100
+        .sort((a, b) => parseInt(b) - parseInt(a));
+      
+      if (sorted.length > 0) {
+        const largest = parseInt(sorted[0]).toLocaleString('en-US');
+        console.log(`⚠️ Fallback found:`, largest);
+        return largest;
+      }
     }
     
     console.log('❌ No market value found in image');
-    console.log('💡 Tip: Make sure the image clearly shows "Est. Market Value" text');
+    console.log('💡 All extracted text:');
+    allExtractedText.forEach((text, i) => {
+      console.log(`   Pass ${i + 1}: ${text.substring(0, 100).replace(/\n/g, ' ')}`);
+    });
     return null;
   } catch (error) {
     console.error('❌ Error during OCR:', error);
