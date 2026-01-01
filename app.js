@@ -251,10 +251,24 @@ const buildFFROAEmbed = () => {
   const totalSlots = 7;
   const fillCount = ffroaState.fill.length;
   
+  // Determine if fill players are in standby or being auto-assigned
+  const minSlotsBeforeFill = 6;
+  const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
+  
   // Build fill section
   let fillSection = '';
   if (fillCount > 0) {
-    fillSection = `\n\n**🔄 FILL (${fillCount}):** ${ffroaState.fill.map(id => `<@${id}>`).join(', ')}`;
+    const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
+    fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${ffroaState.fill.map(id => `<@${id}>`).join(', ')}`;
+    if (fillStatus === 'STANDBY') {
+      fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
+    }
+  }
+  
+  // Build status line
+  let statusLine = `**Status:** ${filledSlots}/${totalSlots}`;
+  if (fillCount > 0 && fillStatus === 'STANDBY') {
+    statusLine += ` (${fillCount} in FILL standby)`;
   }
   
   return new EmbedBuilder()
@@ -263,7 +277,7 @@ const buildFFROAEmbed = () => {
     .setDescription(
       `**__X UP ROLE!__**\n` +
       `**Location:** ${ffroaState.location}\n**Gear:** T${ffroaState.tier} Sets\n` +
-      `**Status:** ${filledSlots + fillCount}/${totalSlots} ${fillCount > 0 ? `(${fillCount} FILL)` : ''}\n\n` +
+      `${statusLine}\n\n` +
       roleLines.join('\n') +
       fillSection +
       `\n\n**Builds Thread:** <#1422948227405316208>`
@@ -273,6 +287,23 @@ const buildFFROAEmbed = () => {
 // Auto-assign fill players to empty slots
 async function autoAssignFillPlayers() {
   const roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'mp', 'mp2', 'flex'];
+  const totalSlots = 7;
+  
+  // Count how many slots are currently filled (not null)
+  const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
+  
+  // Only auto-assign fill players when 6 or more slots are taken
+  // This means: wait until almost full, then fill remaining slots
+  const minSlotsBeforeFill = 6;
+  
+  if (filledSlots < minSlotsBeforeFill) {
+    // Not enough slots filled yet, keep fill players in standby
+    console.log(`⏸️ Fill players on standby: ${filledSlots}/${totalSlots} slots filled (need ${minSlotsBeforeFill})`);
+    return;
+  }
+  
+  // Now we're at 6 or more slots, start assigning fill players
+  console.log(`✅ Auto-assigning fill players: ${filledSlots}/${totalSlots} slots filled`);
   
   while (ffroaState.fill.length > 0) {
     // Find first empty slot
@@ -291,7 +322,7 @@ async function autoAssignFillPlayers() {
     try {
       const channel = await client.channels.fetch(ffroaState.threadId);
       if (channel) {
-        await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}**!`);
+        await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}** from FILL standby!`);
       }
     } catch (err) {
       console.error('Error notifying fill player:', err);
@@ -364,15 +395,14 @@ client.on('messageCreate', async (message) => {
     // Check which role the user is claiming
     for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
       if (pattern.test(content)) {
-        // Count filled slots and fill players
+        // Count filled slots
         const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
         const fillCount = ffroaState.fill.length;
         const totalSlots = 7;
-        const availableSlots = totalSlots - filledSlots - fillCount;
 
-        // Check if there are available slots (considering fill players reserve slots)
-        if (availableSlots <= 0 && !ffroaState.roles[roleKey]) {
-          await message.reply(`❌ No slots available! ${fillCount} slot(s) are reserved for FILL players. Current status: ${filledSlots + fillCount}/${totalSlots}`);
+        // Check if all slots are taken (not including fill players on standby)
+        if (filledSlots >= totalSlots && !ffroaState.roles[roleKey]) {
+          await message.reply(`❌ All slots are full! (${filledSlots}/${totalSlots}) ${fillCount > 0 ? `There are ${fillCount} player(s) in FILL standby.` : ''}`);
           return;
         }
 
