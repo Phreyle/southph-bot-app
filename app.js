@@ -981,6 +981,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         ffroaState.roles[roleOption] = targetUserId;
+        
+        // Check if we need to auto-assign fill players after adding user
+        await autoAssignFillPlayers();
+        
         const embed = buildFFROAEmbed();
 
         // Update the original message
@@ -1036,6 +1040,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         ffroaState.roles[roleOption] = null;
+        
+        // Check if we need to auto-assign fill players after removing user
+        await autoAssignFillPlayers();
+        
         const embed = buildFFROAEmbed();
 
         // Update the original message
