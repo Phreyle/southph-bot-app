@@ -19,6 +19,8 @@ import {
   clearAll,
   CURRENCY 
 } from './bank.js';
+import { createWorker } from 'tesseract.js';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -221,6 +223,10 @@ const ffroaState = {
   },
   fill: [] // Array of user IDs who want to fill any remaining slots
 };
+
+// Storage for regear threads (for OCR tracking)
+const regearThreads = new Set(); // Set of thread IDs for ctaregear and ffregear threads
+
 // Create a Discord client
 const client = new Client({ 
   intents: [
@@ -330,12 +336,100 @@ async function autoAssignFillPlayers() {
   }
 }
 
+// OCR function to extract Est. Market Value from images
+async function extractMarketValueFromImage(imageUrl) {
+  try {
+    console.log('🔍 Starting OCR for image:', imageUrl);
+    
+    // Download the image
+    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    const imageBuffer = Buffer.from(response.data, 'binary');
+    
+    // Create OCR worker
+    const worker = await createWorker('eng');
+    
+    // Process the image
+    const { data: { text } } = await worker.recognize(imageBuffer);
+    await worker.terminate();
+    
+    console.log('📝 OCR Text extracted:', text);
+    
+    // Look for "Est. Market Value" pattern with various formats
+    // The image shows format like: "Est. Market Value    ⚪ 504,360"
+    const patterns = [
+      // Match "Est. Market Value" with optional symbols and the number
+      /Est\.?\s*Market\s*Value[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
+      // Match just "Market Value" 
+      /Market\s*Value[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
+      // Match "Est. Market" 
+      /Est\.?\s*Market[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
+      // Match "Est Value"
+      /Est\.?\s*Value[:\s⚪◯○]*\s*([0-9,]+(?:\.[0-9]+)?[KkMm]?)/i,
+      // Match lines with "Est" followed by numbers
+      /Est\.?[^\d]*?([0-9]{3,}[,0-9]*(?:\.[0-9]+)?[KkMm]?)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        const value = match[1].trim();
+        console.log('✅ Found market value:', value);
+        return value;
+      }
+    }
+    
+    // If no match found, try to find any large number (3+ digits with possible commas)
+    const valuePattern = /\b([0-9]{3,}[,0-9]*(?:\.[0-9]+)?[KkMm]?)\b/g;
+    const numbers = text.match(valuePattern);
+    if (numbers && numbers.length > 0) {
+      // Return the largest number found
+      const largestNum = numbers.reduce((max, num) => {
+        const maxVal = parseFloat(max.replace(/,/g, '').replace(/[KkMm]/i, ''));
+        const numVal = parseFloat(num.replace(/,/g, '').replace(/[KkMm]/i, ''));
+        return numVal > maxVal ? num : max;
+      });
+      console.log('⚠️ No exact match, returning largest number:', largestNum);
+      return largestNum;
+    }
+    
+    console.log('❌ No market value found in image');
+    return null;
+  } catch (error) {
+    console.error('❌ Error during OCR:', error);
+    return null;
+  }
+}
+
 // Listen for messages in the FFROA thread
 client.on('messageCreate', async (message) => {
   // Ignore bot messages
   if (message.author.bot) return;
 
   const prefix = getPrefix();
+
+  // Handle images in regear threads (CTA and FF regear)
+  if (regearThreads.has(message.channelId)) {
+    // Check if message has attachments (images)
+    if (message.attachments.size > 0) {
+      for (const attachment of message.attachments.values()) {
+        // Check if it's an image
+        if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+          console.log('📸 Image detected in regear thread:', attachment.url);
+          
+          // Extract market value from image
+          const marketValue = await extractMarketValueFromImage(attachment.url);
+          
+          if (marketValue) {
+            // Post the extracted value in the thread
+            await message.reply({
+              content: `💰 **Est. Market Value:** ${marketValue}`,
+              allowedMentions: { repliedUser: false }
+            });
+          }
+        }
+      }
+    }
+  }
 
   // Handle FFROA thread messages
   if (ffroaState.active && message.channelId === ffroaState.threadId) {
@@ -1146,6 +1240,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const threadId = threadData.id;
         console.log(`   ✅ CTA thread created: ${threadId}`);
 
+        // Add thread to regear threads tracking (for OCR)
+        regearThreads.add(threadId);
+        console.log(`   📋 Added thread ${threadId} to regear tracking`);
+
         // Create embed for CTA regear
         const embed = new EmbedBuilder()
           .setColor(0xe74c3c) // Red color for CTA
@@ -1218,6 +1316,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const threadData = await threadResponse.json();
         const threadId = threadData.id;
         console.log(`   ✅ FF thread created: ${threadId}`);
+
+        // Add thread to regear threads tracking (for OCR)
+        regearThreads.add(threadId);
+        console.log(`   📋 Added thread ${threadId} to regear tracking`);
 
         // Create embed for FF regear
         const embed = new EmbedBuilder()
