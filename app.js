@@ -151,8 +151,8 @@ function buildHelpEmbed(member, isSlashCommand = false) {
   description += `• \`/utc\` or \`${prefix}utc\` - Display current UTC time\n`;
   description += `• \`/bank balance [@user]\` or \`${prefix}bal [@user]\` - Check balance\n`;
   description += `• \`/bank active\` or \`${prefix}bank active\` - List all bank users\n`;
-  description += `• In FFROA threads: \`x [role]\` - Claim a role (tank, heal, etc.)\n`;
-  description += `• In FFROA threads: \`x fill\` - Sign up to fill any slot\n\n`;
+  description += `• In content threads: \`x [role]\` - Claim a role (tank, heal, etc.)\n`;
+  description += `• In content threads: \`x fill\` - Sign up to fill any slot\n\n`;
 
   // Bank Admin Commands
   if (hasBankPerms || isAdmin) {
@@ -166,8 +166,7 @@ function buildHelpEmbed(member, isSlashCommand = false) {
   // CTA Regear Commands
   if (hasCtaPerms || isAdmin) {
     description += `**⚔️ Regear Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
-    description += `• \`/ctaregear [title]\` - Create a CTA regear thread\n`;
-    description += `• \`/ffregear [title]\` - Create a FF regear thread\n\n`;
+    description += `• \`/regear [cta|ff] [title] [time]\` - Create a regear thread\n\n`;
   }
 
   // Full Admin Commands (Only for Discord Administrators)
@@ -177,10 +176,10 @@ function buildHelpEmbed(member, isSlashCommand = false) {
     description += `• \`/perms list\` or \`${prefix}perms list\` - View role permissions\n`;
     description += `• \`/perms add <bank|cta> @role\` or \`${prefix}perms add <bank|cta> @role\` - Grant role permission\n`;
     description += `• \`/perms remove <bank|cta> @role\` or \`${prefix}perms remove <bank|cta> @role\` - Revoke role permission\n`;
-    description += `• \`/ffroa create\` - Create FF ROA callout\n`;
-    description += `• \`/ffroa reset\` - Reset FF ROA callout\n`;
-    description += `• \`/ffroa adduser\` - Add user to FF ROA role\n`;
-    description += `• \`/ffroa removeuser\` - Remove user from FF ROA role\n\n`;
+    description += `• \`/content create [content_type] [role] [title] [zone] [tier] [time]\` - Create content callout\n`;
+    description += `• \`/content reset\` - Reset content callout\n`;
+    description += `• \`/content adduser\` - Add user to content role\n`;
+    description += `• \`/content removeuser\` - Remove user from content role\n\n`;
   }
 
   // Show permission status if user has special permissions
@@ -205,14 +204,16 @@ const CUSTOM_EMOJIS = {
   DPS: '<:DPS:1388541739815669792>',
 };
 
-// Storage for FFROA state (in production, use a database)
-const ffroaState = {
+// Storage for content state (in production, use a database)
+const contentState = {
   active: false,
   messageId: null,
   channelId: null,
   threadId: null,
-  location: 'Brecilien',
+  contentType: 'ff', // roa, cta, gcamps, ff
+  zone: 'Brecilien',
   tier: 7,
+  time: '',
   roles: {
     tank: null,
     heal: null,
@@ -241,49 +242,58 @@ client.once('clientReady', () => {
   console.log(`Gateway connected as ${client.user.tag}`);
 });
 
-// Helper function to build the FFROA embed
-const buildFFROAEmbed = () => {
+// Helper function to build the content embed
+const buildContentEmbed = () => {
   const roleLines = [
-    `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${ffroaState.roles.tank ? '➡️ <@' + ffroaState.roles.tank + '>' : ''}`,
-    `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${ffroaState.roles.heal ? '➡️ <@' + ffroaState.roles.heal + '>' : ''}`,
-    `**3. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${ffroaState.roles.shadowcaller ? '➡️ <@' + ffroaState.roles.shadowcaller + '>' : ''}`,
-    `**4. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${ffroaState.roles.blazing ? '➡️ <@' + ffroaState.roles.blazing + '>' : ''}`,
-    `**5. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${ffroaState.roles.mp ? '➡️ <@' + ffroaState.roles.mp + '>' : ''}`,
-    `**6. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${ffroaState.roles.mp2 ? '➡️ <@' + ffroaState.roles.mp2 + '>' : ''}`,
-    `**7. ${CUSTOM_EMOJIS.DPS} MP / LC / ARCTIC / PERMA**   ${ffroaState.roles.flex ? '➡️ <@' + ffroaState.roles.flex + '>' : ''}`
+    `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+    `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+    `**3. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
+    `**4. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
+    `**5. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp ? '➡️ <@' + contentState.roles.mp + '>' : ''}`,
+    `**6. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp2 ? '➡️ <@' + contentState.roles.mp2 + '>' : ''}`,
+    `**7. ${CUSTOM_EMOJIS.DPS} MP / LC / ARCTIC / PERMA**   ${contentState.roles.flex ? '➡️ <@' + contentState.roles.flex + '>' : ''}`
   ];
-  
+
   // Count filled slots
-  const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
+  const filledSlots = Object.values(contentState.roles).filter(v => v !== null).length;
   const totalSlots = 7;
-  const fillCount = ffroaState.fill.length;
-  
+  const fillCount = contentState.fill.length;
+
   // Determine if fill players are in standby or being auto-assigned
   const minSlotsBeforeFill = 6;
   const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
-  
+
   // Build fill section
   let fillSection = '';
   if (fillCount > 0) {
     const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
-    fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${ffroaState.fill.map(id => `<@${id}>`).join(', ')}`;
+    fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
     if (fillStatus === 'STANDBY') {
       fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
     }
   }
-  
+
   // Build status line
   let statusLine = `**Status:** ${filledSlots}/${totalSlots}`;
   if (fillCount > 0 && fillStatus === 'STANDBY') {
     statusLine += ` (${fillCount} in FILL standby)`;
   }
-  
+
+  // Content type title
+  const contentTypeTitle = contentState.contentType.toUpperCase();
+  const contentEmoji = {
+    'roa': '🏰',
+    'cta': '⚔️',
+    'gcamps': '🏕️',
+    'ff': '🛡️'
+  }[contentState.contentType] || '🎮';
+
   return new EmbedBuilder()
     .setColor(0x5865F2)
-    .setTitle('🛡️ FFROA Role Call')
+    .setTitle(`${contentEmoji} ${contentTypeTitle} Role Call`)
     .setDescription(
       `**__X UP ROLE!__**\n` +
-      `**Location:** ${ffroaState.location}\n**Gear:** T${ffroaState.tier} Sets\n` +
+      `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
       `${statusLine}\n\n` +
       roleLines.join('\n') +
       fillSection +
@@ -295,39 +305,39 @@ const buildFFROAEmbed = () => {
 async function autoAssignFillPlayers() {
   const roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'mp', 'mp2', 'flex'];
   const totalSlots = 7;
-  
+
   // Count how many slots are currently filled (not null)
-  const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
-  
+  const filledSlots = Object.values(contentState.roles).filter(v => v !== null).length;
+
   // Only auto-assign fill players when 6 or more slots are taken
   // This means: wait until almost full, then fill remaining slots
   const minSlotsBeforeFill = 6;
-  
+
   if (filledSlots < minSlotsBeforeFill) {
     // Not enough slots filled yet, keep fill players in standby
     console.log(`⏸️ Fill players on standby: ${filledSlots}/${totalSlots} slots filled (need ${minSlotsBeforeFill})`);
     return;
   }
-  
+
   // Now we're at 6 or more slots, start assigning fill players
   console.log(`✅ Auto-assigning fill players: ${filledSlots}/${totalSlots} slots filled`);
-  
-  while (ffroaState.fill.length > 0) {
+
+  while (contentState.fill.length > 0) {
     // Find first empty slot
-    const emptySlot = roleKeys.find(key => ffroaState.roles[key] === null);
-    
+    const emptySlot = roleKeys.find(key => contentState.roles[key] === null);
+
     if (!emptySlot) {
       // No empty slots, break
       break;
     }
 
     // Assign first fill player to empty slot
-    const fillPlayerId = ffroaState.fill.shift();
-    ffroaState.roles[emptySlot] = fillPlayerId;
+    const fillPlayerId = contentState.fill.shift();
+    contentState.roles[emptySlot] = fillPlayerId;
 
     // Try to notify the player
     try {
-      const channel = await client.channels.fetch(ffroaState.threadId);
+      const channel = await client.channels.fetch(contentState.threadId);
       if (channel) {
         await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}** from FILL standby!`);
       }
@@ -512,10 +522,10 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // Handle FFROA thread messages
-  if (ffroaState.active && message.channelId === ffroaState.threadId) {
+  // Handle content thread messages
+  if (contentState.active && message.channelId === contentState.threadId) {
     const content = message.content.toLowerCase().trim();
-    
+
     // Pattern matching for "x [role]" format
     const rolePatterns = {
       tank: /^x\s+(tank|t)$/i,
@@ -530,28 +540,28 @@ client.on('messageCreate', async (message) => {
     // Check for "x fill" command
     if (/^x\s+fill$/i.test(content)) {
       // Check if user is already in fill
-      if (ffroaState.fill.includes(message.author.id)) {
+      if (contentState.fill.includes(message.author.id)) {
         await message.react('ℹ️');
         return;
       }
 
       // Check if user already has a role - remove them from it
-      for (const [roleKey, userId] of Object.entries(ffroaState.roles)) {
+      for (const [roleKey, userId] of Object.entries(contentState.roles)) {
         if (userId === message.author.id) {
-          ffroaState.roles[roleKey] = null;
+          contentState.roles[roleKey] = null;
           break;
         }
       }
 
       // Add to fill list
-      ffroaState.fill.push(message.author.id);
+      contentState.fill.push(message.author.id);
 
       // Check if we can auto-assign fill players
       await autoAssignFillPlayers();
 
       try {
-        const embed = buildFFROAEmbed();
-        await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
+        const embed = buildContentEmbed();
+        await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
           method: 'PATCH',
           body: {
             embeds: [embed.toJSON()]
@@ -559,8 +569,8 @@ client.on('messageCreate', async (message) => {
         });
         await message.react('🔄');
       } catch (err) {
-        console.error('Error updating FFROA message:', err);
-        await message.reply('❌ Failed to update the FFROA board.');
+        console.error('Error updating content message:', err);
+        await message.reply('❌ Failed to update the content board.');
       }
       return;
     }
@@ -571,56 +581,56 @@ client.on('messageCreate', async (message) => {
     for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
       if (pattern.test(content)) {
         // Count filled slots
-        const filledSlots = Object.values(ffroaState.roles).filter(v => v !== null).length;
-        const fillCount = ffroaState.fill.length;
+        const filledSlots = Object.values(contentState.roles).filter(v => v !== null).length;
+        const fillCount = contentState.fill.length;
         const totalSlots = 7;
 
         // Check if all slots are taken (not including fill players on standby)
-        if (filledSlots >= totalSlots && !ffroaState.roles[roleKey]) {
+        if (filledSlots >= totalSlots && !contentState.roles[roleKey]) {
           await message.reply(`❌ All slots are full! (${filledSlots}/${totalSlots}) ${fillCount > 0 ? `There are ${fillCount} player(s) in FILL standby.` : ''}`);
           return;
         }
 
         // Check if role is already taken by someone else
-        if (ffroaState.roles[roleKey] && ffroaState.roles[roleKey] !== message.author.id) {
-          await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${ffroaState.roles[roleKey]}>!`);
+        if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+          await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
           return;
         }
 
         // If user already has this role, ignore (no change needed)
-        if (ffroaState.roles[roleKey] === message.author.id) {
+        if (contentState.roles[roleKey] === message.author.id) {
           await message.react('ℹ️');
           return;
         }
 
         // Remove user from any other role they currently have
-        for (const [existingRoleKey, existingUserId] of Object.entries(ffroaState.roles)) {
+        for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
           if (existingUserId === message.author.id) {
-            ffroaState.roles[existingRoleKey] = null;
+            contentState.roles[existingRoleKey] = null;
           }
         }
 
         // Remove user from fill list if they were in it
-        const fillIndex = ffroaState.fill.indexOf(message.author.id);
+        const fillIndex = contentState.fill.indexOf(message.author.id);
         if (fillIndex > -1) {
-          ffroaState.fill.splice(fillIndex, 1);
+          contentState.fill.splice(fillIndex, 1);
         }
 
         // Assign the new role
-        ffroaState.roles[roleKey] = message.author.id;
+        contentState.roles[roleKey] = message.author.id;
         assignedRole = roleKey;
         break;
       }
     }
 
-    // If a role was assigned, update the FFROA message and check for auto-assignment
+    // If a role was assigned, update the content message and check for auto-assignment
     if (assignedRole) {
       // Check if we need to auto-assign fill players
       await autoAssignFillPlayers();
 
       try {
-        const embed = buildFFROAEmbed();
-        await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
+        const embed = buildContentEmbed();
+        await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
           method: 'PATCH',
           body: {
             embeds: [embed.toJSON()]
@@ -629,8 +639,8 @@ client.on('messageCreate', async (message) => {
 
         await message.react('✅');
       } catch (err) {
-        console.error('Error updating FFROA message:', err);
-        await message.reply('❌ Failed to update the FFROA board.');
+        console.error('Error updating content message:', err);
+        await message.reply('❌ Failed to update the content board.');
       }
     }
     return;
@@ -1026,9 +1036,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
-    // "/ffroa" command - Manage FFROA role callout
-    if (name === 'ffroa') {
-      console.log('🛡️ Executing /ffroa command');
+    // "/content" command - Manage content callouts
+    if (name === 'content') {
+      console.log('🎮 Executing /content command');
       const subcommand = data.options[0].name;
       console.log(`   Subcommand: ${subcommand}`);
       const context = req.body.context;
@@ -1036,31 +1046,35 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: create
       if (subcommand === 'create') {
-        console.log('   Creating FFROA thread...');
-        if (ffroaState.active) {
-          console.log('   ❌ FFROA already active');
+        console.log('   Creating content thread...');
+        if (contentState.active) {
+          console.log('   ❌ Content already active');
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ An FFROA callout is already active! Use `/ffroa reset` to clear it first.',
+              content: '❌ A content callout is already active! Use `/content reset` to clear it first.',
               flags: 64 // EPHEMERAL
             },
           });
         }
 
-        const roleOption = data.options[0].options[0].value;
-        const threadTitle = data.options[0].options[1].value;
-        const location = data.options[0].options[2].value;
-        const tier = data.options[0].options[3].value;
+        const contentType = data.options[0].options[0].value;
+        const roleOption = data.options[0].options[1].value;
+        const threadTitle = data.options[0].options[2].value;
+        const zone = data.options[0].options[3].value;
+        const tier = data.options[0].options[4].value;
+        const time = data.options[0].options[5].value;
         const channelId = req.body.channel_id;
-        
-        ffroaState.active = true;
-        ffroaState.location = location;
-        ffroaState.tier = tier;
-        ffroaState.roles[roleOption] = userId;
 
-        const embed = buildFFROAEmbed();
-        
+        contentState.active = true;
+        contentState.contentType = contentType;
+        contentState.zone = zone;
+        contentState.tier = tier;
+        contentState.time = time;
+        contentState.roles[roleOption] = userId;
+
+        const embed = buildContentEmbed();
+
         // Defer the response to give us time to create the thread
         console.log('   ⏳ Deferring response...');
         res.send({
@@ -1085,7 +1099,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           const threadId = threadData.id;
           console.log(`   ✅ Thread created: ${threadId}`);
 
-          // Post the FFROA message in the thread
+          // Post the content message in the thread
           console.log('   📤 Posting message in thread...');
           const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
             method: 'POST',
@@ -1097,32 +1111,32 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           const messageData = await messageResponse.json();
 
           // Store the message and channel info
-          ffroaState.messageId = messageData.id;
-          ffroaState.channelId = threadId;
-          ffroaState.threadId = threadId;
-          console.log('   ✅ FFROA state saved');
+          contentState.messageId = messageData.id;
+          contentState.channelId = threadId;
+          contentState.threadId = threadId;
+          console.log('   ✅ Content state saved');
 
           // Follow up with success message
           console.log('   📨 Sending follow-up message...');
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
             method: 'PATCH',
             body: {
-              content: `✅ FFROA thread created: **${threadTitle}**`,
+              content: `✅ ${contentType.toUpperCase()} content thread created: **${threadTitle}**`,
               flags: 64
             },
           });
-          console.log('   ✅ /ffroa create completed successfully');
+          console.log('   ✅ /content create completed successfully');
 
         } catch (err) {
           console.error('   ❌ Error creating thread:', err);
-          ffroaState.active = false;
-          ffroaState.roles[roleOption] = null;
-          
+          contentState.active = false;
+          contentState.roles[roleOption] = null;
+
           // Follow up with error message
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
             method: 'PATCH',
             body: {
-              content: '❌ Failed to create FFROA thread.',
+              content: '❌ Failed to create content thread.',
               flags: 64
             },
           });
@@ -1132,11 +1146,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: adduser
       if (subcommand === 'adduser') {
-        if (!ffroaState.active) {
+        if (!contentState.active) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ No active FFROA callout! Use `/ffroa create [role]` first.',
+              content: '❌ No active content callout! Use `/content create` first.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1145,7 +1159,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const targetUserId = data.options[0].options[0].value;
         const roleOption = data.options[0].options[1].value;
 
-        if (ffroaState.roles[roleOption]) {
+        if (contentState.roles[roleOption]) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
@@ -1155,16 +1169,16 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        ffroaState.roles[roleOption] = targetUserId;
-        
+        contentState.roles[roleOption] = targetUserId;
+
         // Check if we need to auto-assign fill players after adding user
         await autoAssignFillPlayers();
-        
-        const embed = buildFFROAEmbed();
+
+        const embed = buildContentEmbed();
 
         // Update the original message
         try {
-          await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
             method: 'PATCH',
             body: {
               embeds: [embed.toJSON()]
@@ -1183,7 +1197,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ Failed to update the FFROA message.',
+              content: '❌ Failed to update the content message.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1192,11 +1206,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: removeuser
       if (subcommand === 'removeuser') {
-        if (!ffroaState.active) {
+        if (!contentState.active) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ No active FFROA callout! Use `/ffroa create [role]` first.',
+              content: '❌ No active content callout! Use `/content create` first.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1204,7 +1218,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         const roleOption = data.options[0].options[0].value;
 
-        if (!ffroaState.roles[roleOption]) {
+        if (!contentState.roles[roleOption]) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
@@ -1214,16 +1228,16 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        ffroaState.roles[roleOption] = null;
-        
+        contentState.roles[roleOption] = null;
+
         // Check if we need to auto-assign fill players after removing user
         await autoAssignFillPlayers();
-        
-        const embed = buildFFROAEmbed();
+
+        const embed = buildContentEmbed();
 
         // Update the original message
         try {
-          await DiscordRequest(`channels/${ffroaState.channelId}/messages/${ffroaState.messageId}`, {
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
             method: 'PATCH',
             body: {
               embeds: [embed.toJSON()]
@@ -1242,7 +1256,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: '❌ Failed to update the FFROA message.',
+              content: '❌ Failed to update the content message.',
               flags: 64 // EPHEMERAL
             },
           });
@@ -1251,13 +1265,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: reset
       if (subcommand === 'reset') {
-        ffroaState.active = false;
-        ffroaState.messageId = null;
-        ffroaState.channelId = null;
-        ffroaState.threadId = null;
-        ffroaState.location = 'Brecilien';
-        ffroaState.tier = 7;
-        ffroaState.roles = {
+        contentState.active = false;
+        contentState.messageId = null;
+        contentState.channelId = null;
+        contentState.threadId = null;
+        contentState.contentType = 'ff';
+        contentState.zone = 'Brecilien';
+        contentState.tier = 7;
+        contentState.time = '';
+        contentState.roles = {
           tank: null,
           heal: null,
           shadowcaller: null,
@@ -1266,35 +1282,37 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           mp2: null,
           flex: null
         };
-        ffroaState.fill = [];
+        contentState.fill = [];
 
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: '✅ FFROA callout has been reset! You can now create a new one with `/ffroa create [role]`.',
+            content: '✅ Content callout has been reset! You can now create a new one with `/content create`.',
             flags: 64 // EPHEMERAL
           },
         });
       }
     }
 
-    // "/ctaregear" command - Create CTA regear thread
-    if (name === 'ctaregear') {
-      console.log('⚔️ Executing /ctaregear command');
-      
-      // Check permission
+    // "/regear" command - Create regear thread (unified CTA/FF)
+    if (name === 'regear') {
+      console.log('⚔️ Executing /regear command');
+
+      // Check permission for CTA regear
+      const contentType = data.options[0].value;
       const member = req.body.member;
-      if (!hasPermissionSlash(member, 'ctaRegearRoles')) {
+      if (contentType === 'cta' && !hasPermissionSlash(member, 'ctaRegearRoles')) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: '❌ You need Administrator permission or an authorized role to use this command.',
+            content: '❌ You need Administrator permission or an authorized role to use this command for CTA regear.',
             flags: 64 // EPHEMERAL
           },
         });
       }
-      
-      const threadTitle = data.options[0].value;
+
+      const threadTitle = data.options[1].value;
+      const time = data.options[2].value;
       const channelId = req.body.channel_id;
 
       // Defer the response
@@ -1308,7 +1326,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       try {
         // Create a thread in the channel
-        console.log('   📝 Creating CTA regear thread...');
+        console.log(`   📝 Creating ${contentType.toUpperCase()} regear thread...`);
         const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
           method: 'POST',
           body: {
@@ -1319,20 +1337,23 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
         const threadData = await threadResponse.json();
         const threadId = threadData.id;
-        console.log(`   ✅ CTA thread created: ${threadId}`);
+        console.log(`   ✅ Thread created: ${threadId}`);
 
         // Add thread to regear threads tracking (for OCR)
         regearThreads.add(threadId);
         console.log(`   📋 Added thread ${threadId} to regear tracking`);
 
-        // Create embed for CTA regear
+        // Create embed based on content type
+        const embedColor = contentType === 'cta' ? 0xe74c3c : 0x5865F2;
+        const embedTitle = contentType === 'cta' ? '⚔️ CTA REGEAR' : '🛡️ FF REGEAR';
+        const embedDescription = contentType === 'cta'
+          ? `**SEND REGEAR HERE**\n**INCLUDE OC BREAK**\n**Time:** ${time}`
+          : `**SEND FF REGEAR HERE**\n**Time:** ${time}`;
+
         const embed = new EmbedBuilder()
-          .setColor(0xe74c3c) // Red color for CTA
-          .setTitle('⚔️ CTA REGEAR')
-          .setDescription(
-            `**SEND REGEAR HERE**\n` +
-            `**INCLUDE OC BREAK**`
-          );
+          .setColor(embedColor)
+          .setTitle(embedTitle)
+          .setDescription(embedDescription);
 
         // Post the message in the thread
         await DiscordRequest(`channels/${threadId}/messages`, {
@@ -1347,98 +1368,20 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: `✅ CTA regear thread created: **${threadTitle}**`,
+            content: `✅ ${contentType.toUpperCase()} regear thread created: **${threadTitle}**`,
             flags: 64
           },
         });
-        console.log('   ✅ /ctaregear completed successfully');
+        console.log(`   ✅ /regear ${contentType} completed successfully`);
 
       } catch (err) {
-        console.error('   ❌ Error creating CTA regear thread:', err);
-        
+        console.error(`   ❌ Error creating ${contentType} regear thread:`, err);
+
         // Follow up with error message
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: '❌ Failed to create CTA regear thread.',
-            flags: 64
-          },
-        });
-      }
-      return;
-    }
-
-    // "/ffregear" command - Create FF regear thread
-    if (name === 'ffregear') {
-      console.log('🛡️ Executing /ffregear command');
-      const threadTitle = data.options[0].value;
-      const channelId = req.body.channel_id;
-
-      // Defer the response
-      console.log('   ⏳ Deferring response...');
-      res.send({
-        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: 64 // EPHEMERAL
-        }
-      });
-
-      try {
-        // Create a thread in the channel
-        console.log('   📝 Creating FF regear thread...');
-        const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
-          method: 'POST',
-          body: {
-            name: threadTitle,
-            type: 11, // PUBLIC_THREAD
-            auto_archive_duration: 1440 // 24 hours
-          },
-        });
-        const threadData = await threadResponse.json();
-        const threadId = threadData.id;
-        console.log(`   ✅ FF thread created: ${threadId}`);
-
-        // Add thread to regear threads tracking (for OCR)
-        regearThreads.add(threadId);
-        console.log(`   📋 Added thread ${threadId} to regear tracking`);
-
-        // Create embed for FF regear
-        const embed = new EmbedBuilder()
-          .setColor(0x5865F2) // Discord blurple
-          .setTitle('🛡️ FF REGEAR')
-          .setDescription(
-            `**SEND FF REGEAR HERE**`
-          );
-
-        // Post the message in the thread
-        console.log('   📤 Posting FF message in thread...');
-        await DiscordRequest(`channels/${threadId}/messages`, {
-          method: 'POST',
-          body: {
-            content:"<@&1344897722196430879>",
-            embeds: [embed.toJSON()]
-          },
-        });
-
-        // Follow up with success message
-        console.log('   📨 Sending follow-up message...');
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: `✅ FF regear thread created: **${threadTitle}**`,
-            flags: 64
-          },
-        });
-        console.log('   ✅ /ffregear completed successfully');
-
-      } catch (err) {
-        console.error('   ❌ Error creating FF regear thread:', err);
-        
-        // Follow up with error message
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: '❌ Failed to create FF regear thread.',
+            content: `❌ Failed to create ${contentType.toUpperCase()} regear thread.`,
             flags: 64
           },
         });

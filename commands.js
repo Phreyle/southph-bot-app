@@ -19,20 +19,32 @@ const HELP_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-// FFROA command for Albion Online role callout with subcommands
-const FFROA_COMMAND = {
-  name: 'ffroa',
-  description: 'Manage FFROA role callout for Brecilien',
+// Content command for Albion Online content callouts (ROA/CTA/GCAMPS/FF)
+const CONTENT_COMMAND = {
+  name: 'content',
+  description: 'Manage content callouts',
   options: [
     {
       type: 1, // SUB_COMMAND
       name: 'create',
-      description: 'Create a new FFROA role callout (only once until reset)',
+      description: 'Create a new content callout',
       options: [
         {
           type: 3,
+          name: 'content_type',
+          description: 'Type of content',
+          required: true,
+          choices: [
+            { name: 'ROA', value: 'roa' },
+            { name: 'CTA', value: 'cta' },
+            { name: 'GCAMPS', value: 'gcamps' },
+            { name: 'FF', value: 'ff' },
+          ],
+        },
+        {
+          type: 3,
           name: 'role',
-          description: 'Your role for the raid',
+          description: 'Your role for the content',
           required: true,
           choices: [
             { name: 'Tank', value: 'tank' },
@@ -47,13 +59,13 @@ const FFROA_COMMAND = {
         {
           type: 3,
           name: 'title',
-          description: 'Title for the FFROA thread',
+          description: 'Title for the content thread',
           required: true,
         },
         {
           type: 3,
-          name: 'location',
-          description: 'Location for the raid (e.g., Brecilien, Caerleon)',
+          name: 'zone',
+          description: 'Zone/Location (e.g., Brecilien, Caerleon)',
           required: true,
         },
         {
@@ -63,6 +75,12 @@ const FFROA_COMMAND = {
           required: true,
           min_value: 1,
           max_value: 12,
+        },
+        {
+          type: 3,
+          name: 'time',
+          description: 'Time for the content (e.g., 20:00 UTC)',
+          required: true,
         },
       ],
     },
@@ -119,7 +137,7 @@ const FFROA_COMMAND = {
     {
       type: 1, // SUB_COMMAND
       name: 'reset',
-      description: 'Reset the FFROA callout (allows creating a new one)',
+      description: 'Reset the content callout (allows creating a new one)',
     },
   ],
   type: 1,
@@ -127,32 +145,31 @@ const FFROA_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-// CTA Regear command
-const CTAREGEAR_COMMAND = {
-  name: 'ctaregear',
-  description: 'Create a CTA regear thread',
+// Unified Regear command
+const REGEAR_COMMAND = {
+  name: 'regear',
+  description: 'Create a regear thread',
   options: [
+    {
+      type: 3,
+      name: 'content_type',
+      description: 'Type of content',
+      required: true,
+      choices: [
+        { name: 'CTA', value: 'cta' },
+        { name: 'FF', value: 'ff' },
+      ],
+    },
     {
       type: 3,
       name: 'title',
       description: 'Title for the regear thread',
       required: true,
     },
-  ],
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
-};
-
-// FF Regear command
-const FFREGEAR_COMMAND = {
-  name: 'ffregear',
-  description: 'Create an FF regear thread',
-  options: [
     {
       type: 3,
-      name: 'title',
-      description: 'Title for the regear thread',
+      name: 'time',
+      description: 'Time for the regear (e.g., 20:00 UTC)',
       required: true,
     },
   ],
@@ -310,6 +327,6 @@ const PERMS_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [UTC_COMMAND, HELP_COMMAND, FFROA_COMMAND, CTAREGEAR_COMMAND, FFREGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND];
+const ALL_COMMANDS = [UTC_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
