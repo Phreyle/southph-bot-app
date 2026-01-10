@@ -30,8 +30,8 @@ console.log('Interaction received at', Date.now());
 
 // Prefix configuration
 const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
-// Use /tmp for permissions in read-only container environments
-const PERMISSIONS_FILE = process.env.PERMISSIONS_FILE || '/tmp/permissions-config.json';
+// Store permissions alongside other config files
+const PERMISSIONS_FILE = path.join(__dirname, 'permissions-config.json');
 
 function getPrefix() {
   try {
@@ -536,7 +536,48 @@ client.on('messageCreate', async (message) => {
       mp2: /^x\s+(mp2|mist\s*piercer\s*2)$/i,
       flex: /^x\s+(flex|f|perma|arctic|LC)$/i
     };
+    
+    // Check for "x cancel" command
+    if (/^x\s+cancel$/i.test(content)) {
+      // Check if user has a role assigned
+      let foundRole = false;
+      for (const [roleKey, userId] of Object.entries(contentState.roles)) {
+        if (userId === message.author.id) {
+          contentState.roles[roleKey] = null;
+          foundRole = true;
+          break;
+        }
+      }
 
+      // Also check if user is in fill list
+      const fillIndex = contentState.fill.indexOf(message.author.id);
+      if (fillIndex > -1) {
+        contentState.fill.splice(fillIndex, 1);
+        foundRole = true;
+      }
+
+      if (!foundRole) {
+        await message.react('ℹ️');
+        return;
+      }
+
+      // Update the content message
+      try {
+        const embed = buildContentEmbed();
+        await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+          method: 'PATCH',
+          body: {
+            embeds: [embed.toJSON()]
+          },
+        });
+        await message.react('✅');
+      } catch (err) {
+        console.error('Error updating content message:', err);
+        await message.reply('❌ Failed to update the content board.');
+      }
+      return;
+    }
+    
     // Check for "x fill" command
     if (/^x\s+fill$/i.test(content)) {
       // Check if user is already in fill
