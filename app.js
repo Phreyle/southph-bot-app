@@ -405,7 +405,7 @@ const buildContentEmbed = () => {
     categoryLines.push('');
 
     // SUPPORT
-    categoryLines.push(`**🔧 SUPPORT (${categories.support.length})**`);
+    categoryLines.push(`**${CUSTOM_EMOJIS.DEBUFF} SUPPORT (${categories.support.length})**`);
     if (categories.support.length > 0) {
       categories.support.forEach((uid, idx) => {
         categoryLines.push(`${idx + 1}. <@${uid}>`);
@@ -416,7 +416,7 @@ const buildContentEmbed = () => {
     categoryLines.push('');
 
     // DTANK
-    categoryLines.push(`**🏃 DTANK (${categories.dtank.length})**`);
+    categoryLines.push(`**${CUSTOM_EMOJIS.OFFTANK} DTANK (${categories.dtank.length})**`);
     if (categories.dtank.length > 0) {
       categories.dtank.forEach((uid, idx) => {
         categoryLines.push(`${idx + 1}. <@${uid}>`);
@@ -471,6 +471,28 @@ const buildContentEmbed = () => {
     categoryLines.push(`**${CUSTOM_EMOJIS.DPS} DPS (${categories.dps.length})**`);
     if (categories.dps.length > 0) {
       categories.dps.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // SUPPORT
+    categoryLines.push(`**${CUSTOM_EMOJIS.DEBUFF} SUPPORT (${categories.support.length})**`);
+    if (categories.support.length > 0) {
+      categories.support.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // DTANK
+    categoryLines.push(`**${CUSTOM_EMOJIS.OFFTANK} DTANK (${categories.dtank.length})**`);
+    if (categories.dtank.length > 0) {
+      categories.dtank.forEach((uid, idx) => {
         categoryLines.push(`${idx + 1}. <@${uid}>`);
       });
     } else {
@@ -1530,6 +1552,25 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const targetUserId = data.options[0].options[0].value;
         const roleOption = data.options[0].options[1].value;
 
+        // Validate role for content type
+        const validRoles = {
+          'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
+          'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
+          'cta': ['tank', 'heal', 'dps', 'support', 'dtank'], // CTA uses categories, not fixed roles
+          'ff': ['tank', 'heal', 'dps', 'support', 'dtank']    // FF uses categories, not fixed roles
+        };
+
+        if (!validRoles[contentState.contentType].includes(roleOption)) {
+          const contentTypeName = contentState.contentType.toUpperCase();
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ The role **${roleOption}** is not valid for **${contentTypeName}** content!\n\nValid roles for ${contentTypeName}: ${validRoles[contentState.contentType].map(r => `\`${r}\``).join(', ')}`,
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
         if (contentState.roles[roleOption]) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1588,6 +1629,25 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         const roleOption = data.options[0].options[0].value;
+
+        // Validate role for content type
+        const validRoles = {
+          'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
+          'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
+          'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
+          'ff': ['tank', 'heal', 'dps', 'support', 'dtank']
+        };
+
+        if (!validRoles[contentState.contentType].includes(roleOption)) {
+          const contentTypeName = contentState.contentType.toUpperCase();
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ The role **${roleOption}** is not valid for **${contentTypeName}** content!\n\nValid roles for ${contentTypeName}: ${validRoles[contentState.contentType].map(r => `\`${r}\``).join(', ')}`,
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
 
         if (!contentState.roles[roleOption]) {
           return res.send({
