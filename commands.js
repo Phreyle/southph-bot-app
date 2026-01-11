@@ -67,6 +67,12 @@ const CONTENT_COMMAND = {
           description: 'Time for the content (e.g., 20:00 UTC)',
           required: true,
         },
+        {
+          type: 3,
+          name: 'demassNotice',
+          description: 'demass notice message',
+          required: false,
+        },
       ],
     },
     {
