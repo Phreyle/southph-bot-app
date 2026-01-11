@@ -23,13 +23,10 @@ import { createWorker } from 'tesseract.js';
 import axios from 'axios';
 import sharp from 'sharp';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 console.log('Interaction received at', Date.now());
 
-// Hardcoded the fuck out for a persistent data directory
-const DATA_DIR = '/home/container';
+// Data directory from environment variable (default: /home/container/data)
+const DATA_DIR = process.env.DATA_DIR || '/home/container/data';
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -71,62 +68,21 @@ function savePermissions(guildId, data) {
   try {
     const file = getPermissionsFile(guildId);
     fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    console.log(`✅ Permissions saved successfully for guild ${guildId}`);
   } catch (e) {
     console.error(`Error saving permissions for guild ${guildId}:`, e);
   }
 }
 
-// Prefix configuration
-// Store permissions alongside other config files
-const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
-const PERMISSIONS_FILE = path.join(__dirname, 'permissions-config.json');
-
-function getPrefix() {
+// Save per-guild prefix
+function savePrefix(guildId, prefix) {
   try {
-    const data = fs.readFileSync(PREFIX_FILE, 'utf8');
-    const config = JSON.parse(data);
-    return config.prefix || '!';
-  } catch (error) {
-    return '!';
-  }
-}
-
-function setPrefix(newPrefix) {
-  try {
-    fs.writeFileSync(PREFIX_FILE, JSON.stringify({ prefix: newPrefix }, null, 2), 'utf8');
-    console.log(`✅ Prefix changed to: ${newPrefix}`);
+    const file = getPrefixFile(guildId);
+    fs.writeFileSync(file, JSON.stringify({ prefix }, null, 2));
+    console.log(`✅ Prefix changed to: ${prefix} for guild ${guildId}`);
     return true;
   } catch (error) {
-    console.error('❌ Error saving prefix:', error);
-    return false;
-  }
-}
-
-// Permission configuration
-function getPermissions() {
-  try {
-    const data = fs.readFileSync(PERMISSIONS_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading permissions config:', error);
-    return { bankAdminRoles: [], ctaRegearRoles: [] };
-  }
-}
-
-function savePermissions(config) {
-  try {
-    // Ensure the directory exists
-    const dir = path.dirname(PERMISSIONS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    
-    fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify(config, null, 2), 'utf8');
-    console.log('✅ Permissions saved successfully to:', PERMISSIONS_FILE);
-    return true;
-  } catch (error) {
-    console.error('❌ Error saving permissions config:', error);
-    console.error('   Attempted path:', PERMISSIONS_FILE);
+    console.error(`❌ Error saving prefix for guild ${guildId}:`, error);
     return false;
   }
 }
@@ -169,8 +125,8 @@ function hasPermissionSlash(member, permissionType) {
 }
 
 // Build help embed based on user permissions
-function buildHelpEmbed(member, isSlashCommand = false) {
-  const prefix = getPrefix();
+function buildHelpEmbed(member, guildId, isSlashCommand = false) {
+  const prefix = loadPrefix(guildId).prefix;
   
   // Check permissions
   const isAdmin = isSlashCommand 
@@ -1258,7 +1214,7 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    if (setPrefix(newPrefix)) {
+    if (savePrefix(message.guild.id, newPrefix)) {
       await message.reply(`✅ Prefix changed from \`${prefix}\` to \`${newPrefix}\``);
     } else {
       await message.reply('❌ Failed to change prefix.');
@@ -1296,7 +1252,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (subcommand === 'list') {
-      const permissions = getPermissions();
+      const permissions = loadPermissions(message.guild.id);
       const bankRoles = permissions.bankAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
       const ctaRoles = permissions.ctaRegearRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
       
@@ -1332,7 +1288,7 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    const permissions = getPermissions();
+    const permissions = loadPermissions(message.guild.id);
 
     if (subcommand === 'add') {
       if (permissions[configKey].includes(role.id)) {
@@ -1341,11 +1297,8 @@ client.on('messageCreate', async (message) => {
       }
       
       permissions[configKey].push(role.id);
-      if (savePermissions(permissions)) {
-        await message.reply(`✅ Added ${role} to ${displayName} permissions.`);
-      } else {
-        await message.reply('❌ Failed to save permissions.');
-      }
+      savePermissions(message.guild.id, permissions);
+      await message.reply(`✅ Added ${role} to ${displayName} permissions.`);
       return;
     }
 
@@ -1357,11 +1310,8 @@ client.on('messageCreate', async (message) => {
       }
       
       permissions[configKey].splice(index, 1);
-      if (savePermissions(permissions)) {
-        await message.reply(`✅ Removed ${role} from ${displayName} permissions.`);
-      } else {
-        await message.reply('❌ Failed to save permissions.');
-      }
+      savePermissions(message.guild.id, permissions);
+      await message.reply(`✅ Removed ${role} from ${displayName} permissions.`);
       return;
     }
 
@@ -1842,10 +1792,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
+        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options[0].value;
         const amount = data.options[0].options[1].value;
 
-        const result = deposit(message.guild.id, targetUserId, amount);
+        const result = deposit(guildId, targetUserId, amount);
 
         if (!result.success) {
           return res.send({
@@ -1887,10 +1838,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
+        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options[0].value;
         const amount = data.options[0].options[1].value;
 
-        const result = withdraw(targetUserId, amount);
+        const result = withdraw(guildId, targetUserId, amount);
 
 
 
@@ -1924,8 +1876,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: balance
       if (subcommand === 'balance') {
+        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options?.[0]?.value || userId;
-        const balance = getBalance(targetUserId);
+        const balance = getBalance(guildId, targetUserId);
 
         const embed = new EmbedBuilder()
           .setColor(0x5865F2) // Discord blurple
@@ -1946,7 +1899,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: active
       if (subcommand === 'active') {
-        const activeUsers = getActiveUsers();
+        const guildId = req.body.guild_id;
+        const activeUsers = getActiveUsers(guildId);
 
         if (activeUsers.length === 0) {
           return res.send({
@@ -1988,8 +1942,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
+        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options[0].value;
-        const result = clearUser(targetUserId);
+        const result = clearUser(guildId, targetUserId);
 
         if (!result.success) {
           return res.send({
@@ -2031,7 +1986,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const result = clearAll();
+        const guildId = req.body.guild_id;
+        const result = clearAll(guildId);
 
         if (!result.success) {
           return res.send({
@@ -2064,8 +2020,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     // "/help" command - Show available commands
     if (name === 'help') {
       console.log('❓ Executing /help command');
+      const guildId = req.body.guild_id;
       const member = req.body.member;
-      const embed = buildHelpEmbed(member, true);
+      const embed = buildHelpEmbed(member, guildId, true);
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -2098,7 +2055,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: list
       if (subcommand === 'list') {
-        const permissions = getPermissions();
+        const guildId = req.body.guild_id;
+        const permissions = loadPermissions(guildId);
         const bankRoles = permissions.bankAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
         const ctaRoles = permissions.ctaRegearRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
         
@@ -2123,6 +2081,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: add
       if (subcommand === 'add') {
+        const guildId = req.body.guild_id;
         const permType = data.options[0].options[0].value; // 'bank' or 'cta'
         const roleId = data.options[0].options[1].value;
         
@@ -2144,7 +2103,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const permissions = getPermissions();
+        const permissions = loadPermissions(guildId);
 
         if (permissions[configKey].includes(roleId)) {
           return res.send({
@@ -2157,27 +2116,19 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
         
         permissions[configKey].push(roleId);
-        if (savePermissions(permissions)) {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `✅ Added <@&${roleId}> to ${displayName} permissions.\n\n**Storage location:** \`${PERMISSIONS_FILE}\``,
-              flags: 64
-            },
-          });
-        } else {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `❌ Failed to save permissions. Check console for errors.\n**Attempted path:** \`${PERMISSIONS_FILE}\``,
-              flags: 64
-            },
-          });
-        }
+        savePermissions(guildId, permissions);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `✅ Added <@&${roleId}> to ${displayName} permissions.`,
+            flags: 64
+          },
+        });
       }
 
       // Subcommand: remove
       if (subcommand === 'remove') {
+        const guildId = req.body.guild_id;
         const permType = data.options[0].options[0].value; // 'bank' or 'cta'
         const roleId = data.options[0].options[1].value;
         
@@ -2199,7 +2150,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const permissions = getPermissions();
+        const permissions = loadPermissions(guildId);
         const index = permissions[configKey].indexOf(roleId);
         
         if (index === -1) {
@@ -2213,23 +2164,14 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
         
         permissions[configKey].splice(index, 1);
-        if (savePermissions(permissions)) {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `✅ Removed <@&${roleId}> from ${displayName} permissions.\n\n**Storage location:** \`${PERMISSIONS_FILE}\``,
-              flags: 64
-            },
-          });
-        } else {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `❌ Failed to save permissions. Check console for errors.\n**Attempted path:** \`${PERMISSIONS_FILE}\``,
-              flags: 64
-            },
-          });
-        }
+        savePermissions(guildId, permissions);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `✅ Removed <@&${roleId}> from ${displayName} permissions.`,
+            flags: 64
+          },
+        });
       }
     }
 

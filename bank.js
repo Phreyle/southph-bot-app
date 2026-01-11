@@ -7,14 +7,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // Currency symbol
 export const CURRENCY = '💰';
 
-// Data directory
-const DATA_DIR = '/home/container';
+// Data directory from environment variable (default: /home/container/data)
+const DATA_DIR = process.env.DATA_DIR || '/home/container/data';
 const getBankFile = (guildId) => path.join(DATA_DIR, `bank-data-${guildId}.json`);
 
 /**
