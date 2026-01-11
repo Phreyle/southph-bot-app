@@ -72,7 +72,7 @@ const CONTENT_COMMAND = {
           name: 'demassNotice',
           description: 'demass notice message',
           required: false,
-        },
+        }
       ],
     },
     {
