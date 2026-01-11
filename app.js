@@ -854,8 +854,11 @@ client.on('messageCreate', async (message) => {
       const rolePatterns = {
         tank: /^x\s+(tank|t)$/i,
         heal: /^x\s+(heal|healer|h)$/i,
+        mp: /^x\s+(mp|mist|piercer)$/i,
+        mp2: /^x\s+(mp2|mist2|piercer2)$/i,
         shadowcaller: /^x\s+(shadowcaller|sc|shadow)$/i,
         blazing: /^x\s+(blazing|blaze|b)$/i,
+        flex: /^x\s+(flex|perma|lc|arctic)$/i,
         badon: /^x\s+(badon)$/i
       };
 
@@ -1451,8 +1454,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         contentState.roles = {
           tank: null,
           heal: null,
+          mp: null,
+          mp2: null,
           shadowcaller: null,
           blazing: null,
+          flex: null,
           badon: null
         };
 
