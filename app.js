@@ -31,25 +31,16 @@ console.log('Interaction received at', Date.now());
 // Hardcoded the fuck out for a persistent data directory
 const DATA_DIR = '/home/container';
 
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
 // Utility functions for per-guild files
 const getBankFile = (guildId) => path.join(DATA_DIR, `bank-data-${guildId}.json`);
 const getPrefixFile = (guildId) => path.join(DATA_DIR, `prefix-config-${guildId}.json`);
 const getPermissionsFile = (guildId) => path.join(DATA_DIR, `permissions-config-${guildId}.json`);
 
-// Example: Load per-guild bank data
-function loadBankData(guildId) {
-  const file = getBankFile(guildId);
-  if (fs.existsSync(file)) {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  }
-  return {}; // default empty data
-}
-
-// Example: Save per-guild bank data
-function saveBankData(guildId, data) {
-  const file = getBankFile(guildId);
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
 
 // Example: Load per-guild prefix
 function loadPrefix(guildId) {
@@ -62,14 +53,6 @@ function loadPrefix(guildId) {
     console.error(`Error loading prefix for guild ${guildId}:`, e);
   }
   return { prefix: "!" }; // default prefix
-}
-function savePrefix(guildId, data) {
-  try {
-    const file = getPrefixFile(guildId);
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error(`Error saving prefix for guild ${guildId}:`, e);
-  }
 }
 
 // Example: Load per-guild permissions
@@ -1908,6 +1891,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const amount = data.options[0].options[1].value;
 
         const result = withdraw(targetUserId, amount);
+
+
 
         if (!result.success) {
           return res.send({
