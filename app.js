@@ -28,9 +28,74 @@ const __dirname = path.dirname(__filename);
 
 console.log('Interaction received at', Date.now());
 
+// Hardcoded the fuck out for a persistent data directory
+const DATA_DIR = '/home/container';
+
+// Utility functions for per-guild files
+const getBankFile = (guildId) => path.join(DATA_DIR, `bank-data-${guildId}.json`);
+const getPrefixFile = (guildId) => path.join(DATA_DIR, `prefix-config-${guildId}.json`);
+const getPermissionsFile = (guildId) => path.join(DATA_DIR, `permissions-config-${guildId}.json`);
+
+// Example: Load per-guild bank data
+function loadBankData(guildId) {
+  const file = getBankFile(guildId);
+  if (fs.existsSync(file)) {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  }
+  return {}; // default empty data
+}
+
+// Example: Save per-guild bank data
+function saveBankData(guildId, data) {
+  const file = getBankFile(guildId);
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+// Example: Load per-guild prefix
+function loadPrefix(guildId) {
+  try {
+    const file = getPrefixFile(guildId);
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    }
+  } catch (e) {
+    console.error(`Error loading prefix for guild ${guildId}:`, e);
+  }
+  return { prefix: "!" }; // default prefix
+}
+function savePrefix(guildId, data) {
+  try {
+    const file = getPrefixFile(guildId);
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error(`Error saving prefix for guild ${guildId}:`, e);
+  }
+}
+
+// Example: Load per-guild permissions
+function loadPermissions(guildId) {
+  try {
+    const file = getPermissionsFile(guildId);
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    }
+  } catch (e) {
+    console.error(`Error loading permissions for guild ${guildId}:`, e);
+  }
+  return { bankAdminRoles: [], ctaRegearRoles: [] };
+}
+function savePermissions(guildId, data) {
+  try {
+    const file = getPermissionsFile(guildId);
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error(`Error saving permissions for guild ${guildId}:`, e);
+  }
+}
+
 // Prefix configuration
-const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
 // Store permissions alongside other config files
+const PREFIX_FILE = path.join(__dirname, 'prefix-config.json');
 const PERMISSIONS_FILE = path.join(__dirname, 'permissions-config.json');
 
 function getPrefix() {
@@ -91,7 +156,7 @@ function hasPermission(member, permissionType) {
   }
 
   // Check if user has any of the specified roles
-  const permissions = getPermissions();
+  const permissions = loadPermissions(member.guild.id);
   const allowedRoles = permissions[permissionType] || [];
   
   if (!member.roles || !member.roles.cache) {
@@ -110,7 +175,7 @@ function hasPermissionSlash(member, permissionType) {
   }
 
   // Check if user has any of the specified roles
-  const permissions = getPermissions();
+  const permissions = loadPermissions(member.guild.id);
   const allowedRoles = permissions[permissionType] || [];
   
   if (!member.roles || allowedRoles.length === 0) {
@@ -190,8 +255,10 @@ function buildHelpEmbed(member, isSlashCommand = false) {
   embed.setDescription(description);
   return embed;
 }
+
 // Create an express app
 const app = express();
+
 // Get port, or default to 3000
 const PORT = process.env.PORT || 3000;
 
@@ -211,19 +278,37 @@ const contentState = {
   channelId: null,
   threadId: null,
   contentType: 'ff', // roa, cta, gcamps, ff
+  title: '',
   zone: 'Brecilien',
   tier: 7,
   time: '',
+  demassNotice: '',
+  targetCount: 10, // for FF only
+
+  // For ROA/GCAMPS (fixed slots)
+  // ROA uses: tank, heal, mp, mp2, shadowcaller, blazing, flex (7 slots)
+  // GCAMPS uses: tank, heal, shadowcaller, blazing, badon (5 slots)
   roles: {
     tank: null,
     heal: null,
-    shadowcaller: null,
-    blazing: null,
     mp: null,
     mp2: null,
-    flex: null
+    shadowcaller: null,
+    blazing: null,
+    flex: null,
+    badon: null
   },
-  fill: [] // Array of user IDs who want to fill any remaining slots
+
+  // For CTA/FF (category lists)
+  categories: {
+    tank: [],
+    heal: [],
+    dps: [],
+    support: [], // CTA only
+    dtank: []    // CTA only
+  },
+
+  fill: [] // Array of user IDs who want to fill any remaining slots (ROA/GCAMPS only)
 };
 
 // Storage for regear threads (for OCR tracking)
@@ -244,74 +329,250 @@ client.once('clientReady', () => {
 
 // Helper function to build the content embed
 const buildContentEmbed = () => {
-  const roleLines = [
-    `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
-    `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
-    `**3. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
-    `**4. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
-    `**5. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp ? '➡️ <@' + contentState.roles.mp + '>' : ''}`,
-    `**6. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp2 ? '➡️ <@' + contentState.roles.mp2 + '>' : ''}`,
-    `**7. ${CUSTOM_EMOJIS.DPS} MP / LC / ARCTIC / PERMA**   ${contentState.roles.flex ? '➡️ <@' + contentState.roles.flex + '>' : ''}`
-  ];
-
-  // Count filled slots
-  const filledSlots = Object.values(contentState.roles).filter(v => v !== null).length;
-  const totalSlots = 7;
-  const fillCount = contentState.fill.length;
-
-  // Determine if fill players are in standby or being auto-assigned
-  const minSlotsBeforeFill = 6;
-  const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
-
-  // Build fill section
-  let fillSection = '';
-  if (fillCount > 0) {
-    const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
-    fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
-    if (fillStatus === 'STANDBY') {
-      fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
-    }
-  }
-
-  // Build status line
-  let statusLine = `**Status:** ${filledSlots}/${totalSlots}`;
-  if (fillCount > 0 && fillStatus === 'STANDBY') {
-    statusLine += ` (${fillCount} in FILL standby)`;
-  }
-
-  // Content type title
-  const contentTypeTitle = contentState.contentType.toUpperCase();
+  const contentType = contentState.contentType;
   const contentEmoji = {
     'roa': '🏰',
     'cta': '⚔️',
     'gcamps': '🏕️',
     'ff': '🛡️'
-  }[contentState.contentType] || '🎮';
+  }[contentType] || '🎮';
 
-  return new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setTitle(`${contentEmoji} ${contentTypeTitle} Role Call`)
-    .setDescription(
-      `**__X UP ROLE!__**\n` +
-      `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
-      `${statusLine}\n\n` +
-      roleLines.join('\n') +
-      fillSection +
-      `\n\n**Builds Thread:** <#1422948227405316208>`
-    );
+  // ROA - Fixed 7 slots
+  if (contentType === 'roa') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp ? '➡️ <@' + contentState.roles.mp + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp2 ? '➡️ <@' + contentState.roles.mp2 + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
+      `**6. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
+      `**7. ${CUSTOM_EMOJIS.DPS} FLEX (MP/LC/ARCTIC/PERMA)**   ${contentState.roles.flex ? '➡️ <@' + contentState.roles.flex + '>' : ''}`
+    ];
+
+    const roaRoles = ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'];
+    const filledSlots = roaRoles.filter(key => contentState.roles[key] !== null).length;
+    const fillCount = contentState.fill.length;
+    const minSlotsBeforeFill = 6;
+    const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
+
+    let fillSection = '';
+    if (fillCount > 0) {
+      const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
+      fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
+      if (fillStatus === 'STANDBY') {
+        fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
+      }
+    }
+
+    let statusLine = `**Status:** ${filledSlots}/7`;
+    if (fillCount > 0 && fillStatus === 'STANDBY') {
+      statusLine += ` (${fillCount} in FILL standby)`;
+    }
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} ROA Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `${statusLine}\n\n` +
+        roleLines.join('\n') +
+        fillSection
+      );
+  }
+
+  // GCAMPS - Fixed 5 slots
+  if (contentType === 'gcamps') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} BADON**   ${contentState.roles.badon ? '➡️ <@' + contentState.roles.badon + '>' : ''}`
+    ];
+
+    const gcampsRoles = ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'];
+    const filledSlots = gcampsRoles.filter(key => contentState.roles[key] !== null).length;
+    const fillCount = contentState.fill.length;
+    const minSlotsBeforeFill = 4;
+    const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
+
+    let fillSection = '';
+    if (fillCount > 0) {
+      const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
+      fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
+      if (fillStatus === 'STANDBY') {
+        fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
+      }
+    }
+
+    let statusLine = `**Status:** ${filledSlots}/5`;
+    if (fillCount > 0 && fillStatus === 'STANDBY') {
+      statusLine += ` (${fillCount} in FILL standby)`;
+    }
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} GCAMPS Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `${statusLine}\n\n` +
+        roleLines.join('\n') +
+        fillSection
+      );
+  }
+
+  // CTA - Category-based with 5 categories
+  if (contentType === 'cta') {
+    const categories = contentState.categories;
+    const totalPlayers = categories.tank.length + categories.heal.length + categories.dps.length + categories.support.length + categories.dtank.length;
+
+    const categoryLines = [];
+
+    // TANK
+    categoryLines.push(`**${CUSTOM_EMOJIS.OFFTANK} TANK (${categories.tank.length})**`);
+    if (categories.tank.length > 0) {
+      categories.tank.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // HEAL
+    categoryLines.push(`**${CUSTOM_EMOJIS.HEALER} HEAL (${categories.heal.length})**`);
+    if (categories.heal.length > 0) {
+      categories.heal.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // DPS
+    categoryLines.push(`**${CUSTOM_EMOJIS.DPS} DPS (${categories.dps.length})**`);
+    if (categories.dps.length > 0) {
+      categories.dps.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // SUPPORT
+    categoryLines.push(`**🔧 SUPPORT (${categories.support.length})**`);
+    if (categories.support.length > 0) {
+      categories.support.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // DTANK
+    categoryLines.push(`**🏃 DTANK (${categories.dtank.length})**`);
+    if (categories.dtank.length > 0) {
+      categories.dtank.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+
+    return new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle(`${contentEmoji} CTA Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `**Status:** ${totalPlayers} players\n\n` +
+        categoryLines.join('\n')
+      );
+  }
+
+  // FF - Category-based with 3 categories and target count
+  if (contentType === 'ff') {
+    const categories = contentState.categories;
+    const totalPlayers = categories.tank.length + categories.heal.length + categories.dps.length;
+    const targetCount = contentState.targetCount || 10;
+
+    const categoryLines = [];
+
+    // TANK
+    categoryLines.push(`**${CUSTOM_EMOJIS.OFFTANK} TANK (${categories.tank.length})**`);
+    if (categories.tank.length > 0) {
+      categories.tank.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // HEAL
+    categoryLines.push(`**${CUSTOM_EMOJIS.HEALER} HEAL (${categories.heal.length})**`);
+    if (categories.heal.length > 0) {
+      categories.heal.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+    categoryLines.push('');
+
+    // DPS
+    categoryLines.push(`**${CUSTOM_EMOJIS.DPS} DPS (${categories.dps.length})**`);
+    if (categories.dps.length > 0) {
+      categories.dps.forEach((uid, idx) => {
+        categoryLines.push(`${idx + 1}. <@${uid}>`);
+      });
+    } else {
+      categoryLines.push('*(empty)*');
+    }
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} FF Role Call (Fame Farm)`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `**Target:** ${targetCount} players | **Current:** ${totalPlayers}/${targetCount}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `\n` +
+        categoryLines.join('\n')
+      );
+  }
 };
 
-// Auto-assign fill players to empty slots
+// Auto-assign fill players to empty slots (ROA/GCAMPS only)
 async function autoAssignFillPlayers() {
-  const roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'mp', 'mp2', 'flex'];
-  const totalSlots = 7;
+  // Only for ROA/GCAMPS (fixed slots)
+  if (contentState.contentType !== 'roa' && contentState.contentType !== 'gcamps') {
+    return;
+  }
+
+  let roleKeys, totalSlots, minSlotsBeforeFill;
+
+  if (contentState.contentType === 'roa') {
+    roleKeys = ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'];
+    totalSlots = 7;
+    minSlotsBeforeFill = 6;
+  } else { // gcamps
+    roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'];
+    totalSlots = 5;
+    minSlotsBeforeFill = 4;
+  }
 
   // Count how many slots are currently filled (not null)
-  const filledSlots = Object.values(contentState.roles).filter(v => v !== null).length;
-
-  // Only auto-assign fill players when 6 or more slots are taken
-  // This means: wait until almost full, then fill remaining slots
-  const minSlotsBeforeFill = 6;
+  const filledSlots = roleKeys.filter(key => contentState.roles[key] !== null).length;
 
   if (filledSlots < minSlotsBeforeFill) {
     // Not enough slots filled yet, keep fill players in standby
@@ -319,7 +580,7 @@ async function autoAssignFillPlayers() {
     return;
   }
 
-  // Now we're at 6 or more slots, start assigning fill players
+  // Now we're at threshold or more slots, start assigning fill players
   console.log(`✅ Auto-assigning fill players: ${filledSlots}/${totalSlots} slots filled`);
 
   while (contentState.fill.length > 0) {
@@ -496,7 +757,7 @@ client.on('messageCreate', async (message) => {
   // Ignore bot messages
   if (message.author.bot) return;
 
-  const prefix = getPrefix();
+  const prefix = loadPrefix(message.guild.id).prefix;
 
   // Handle images in regear threads (CTA and FF regear)
   if (regearThreads.has(message.channelId)) {
@@ -525,35 +786,40 @@ client.on('messageCreate', async (message) => {
   // Handle content thread messages
   if (contentState.active && message.channelId === contentState.threadId) {
     const content = message.content.toLowerCase().trim();
+    const contentType = contentState.contentType;
 
-    // Pattern matching for "x [role]" format
-    const rolePatterns = {
-      tank: /^x\s+(tank|t)$/i,
-      heal: /^x\s+(heal|healer|h)$/i,
-      shadowcaller: /^x\s+(shadowcaller|sc|shadow)$/i,
-      blazing: /^x\s+(blazing|blaze|b)$/i,
-      mp: /^x\s+(mp|mist\s*piercer)$/i,
-      mp2: /^x\s+(mp2|mist\s*piercer\s*2)$/i,
-      flex: /^x\s+(flex|f|perma|arctic|LC)$/i
-    };
-    
     // Check for "x cancel" command
     if (/^x\s+cancel$/i.test(content)) {
-      // Check if user has a role assigned
       let foundRole = false;
-      for (const [roleKey, userId] of Object.entries(contentState.roles)) {
-        if (userId === message.author.id) {
-          contentState.roles[roleKey] = null;
+
+      // For ROA/GCAMPS (fixed slots)
+      if (contentType === 'roa' || contentType === 'gcamps') {
+        for (const [roleKey, userId] of Object.entries(contentState.roles)) {
+          if (userId === message.author.id) {
+            contentState.roles[roleKey] = null;
+            foundRole = true;
+            break;
+          }
+        }
+
+        // Also check if user is in fill list
+        const fillIndex = contentState.fill.indexOf(message.author.id);
+        if (fillIndex > -1) {
+          contentState.fill.splice(fillIndex, 1);
           foundRole = true;
-          break;
         }
       }
 
-      // Also check if user is in fill list
-      const fillIndex = contentState.fill.indexOf(message.author.id);
-      if (fillIndex > -1) {
-        contentState.fill.splice(fillIndex, 1);
-        foundRole = true;
+      // For CTA/FF (categories)
+      if (contentType === 'cta' || contentType === 'ff') {
+        for (const [categoryKey, userList] of Object.entries(contentState.categories)) {
+          const userIndex = userList.indexOf(message.author.id);
+          if (userIndex > -1) {
+            userList.splice(userIndex, 1);
+            foundRole = true;
+            break;
+          }
+        }
       }
 
       if (!foundRole) {
@@ -578,8 +844,14 @@ client.on('messageCreate', async (message) => {
       return;
     }
     
-    // Check for "x fill" command
+    // Check for "x fill" command (ROA/GCAMPS only)
     if (/^x\s+fill$/i.test(content)) {
+      // Only for ROA/GCAMPS
+      if (contentType !== 'roa' && contentType !== 'gcamps') {
+        await message.reply('❌ Fill is only available for ROA and Group Camps.');
+        return;
+      }
+
       // Check if user is already in fill
       if (contentState.fill.includes(message.author.id)) {
         await message.react('ℹ️');
@@ -616,74 +888,176 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    let assignedRole = null;
+    // === ROA/GCAMPS - Fixed slot assignment ===
+    if (contentType === 'roa' || contentType === 'gcamps') {
+      const rolePatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        shadowcaller: /^x\s+(shadowcaller|sc|shadow)$/i,
+        blazing: /^x\s+(blazing|blaze|b)$/i,
+        badon: /^x\s+(badon)$/i
+      };
 
-    // Check which role the user is claiming
-    for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
-      if (pattern.test(content)) {
-        // Count filled slots
-        const filledSlots = Object.values(contentState.roles).filter(v => v !== null).length;
-        const fillCount = contentState.fill.length;
-        const totalSlots = 7;
+      let assignedRole = null;
 
-        // Check if all slots are taken (not including fill players on standby)
-        if (filledSlots >= totalSlots && !contentState.roles[roleKey]) {
-          await message.reply(`❌ All slots are full! (${filledSlots}/${totalSlots}) ${fillCount > 0 ? `There are ${fillCount} player(s) in FILL standby.` : ''}`);
-          return;
-        }
-
-        // Check if role is already taken by someone else
-        if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
-          await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
-          return;
-        }
-
-        // If user already has this role, ignore (no change needed)
-        if (contentState.roles[roleKey] === message.author.id) {
-          await message.react('ℹ️');
-          return;
-        }
-
-        // Remove user from any other role they currently have
-        for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
-          if (existingUserId === message.author.id) {
-            contentState.roles[existingRoleKey] = null;
+      for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+        if (pattern.test(content)) {
+          // Check if role is already taken by someone else
+          if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+            await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
+            return;
           }
-        }
 
-        // Remove user from fill list if they were in it
-        const fillIndex = contentState.fill.indexOf(message.author.id);
-        if (fillIndex > -1) {
-          contentState.fill.splice(fillIndex, 1);
-        }
+          // If user already has this role, ignore
+          if (contentState.roles[roleKey] === message.author.id) {
+            await message.react('ℹ️');
+            return;
+          }
 
-        // Assign the new role
-        contentState.roles[roleKey] = message.author.id;
-        assignedRole = roleKey;
-        break;
+          // Remove user from any other role they currently have
+          for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
+            if (existingUserId === message.author.id) {
+              contentState.roles[existingRoleKey] = null;
+            }
+          }
+
+          // Remove user from fill list if they were in it
+          const fillIndex = contentState.fill.indexOf(message.author.id);
+          if (fillIndex > -1) {
+            contentState.fill.splice(fillIndex, 1);
+          }
+
+          // Assign the new role
+          contentState.roles[roleKey] = message.author.id;
+          assignedRole = roleKey;
+          break;
+        }
       }
+
+      if (assignedRole) {
+        await autoAssignFillPlayers();
+
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
     }
 
-    // If a role was assigned, update the content message and check for auto-assignment
-    if (assignedRole) {
-      // Check if we need to auto-assign fill players
-      await autoAssignFillPlayers();
+    // === CTA - Category-based assignment ===
+    if (contentType === 'cta') {
+      const categoryPatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        dps: /^x\s+(dps|d)$/i,
+        support: /^x\s+(support|sup|s)$/i,
+        dtank: /^x\s+(dtank|dt|dive)$/i
+      };
 
-      try {
-        const embed = buildContentEmbed();
-        await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
-          method: 'PATCH',
-          body: {
-            embeds: [embed.toJSON()]
-          },
-        });
+      let assignedCategory = null;
 
-        await message.react('✅');
-      } catch (err) {
-        console.error('Error updating content message:', err);
-        await message.reply('❌ Failed to update the content board.');
+      for (const [categoryKey, pattern] of Object.entries(categoryPatterns)) {
+        if (pattern.test(content)) {
+          // Check if user is already in this category
+          if (contentState.categories[categoryKey].includes(message.author.id)) {
+            await message.react('ℹ️');
+            return;
+          }
+
+          // Remove user from any other category
+          for (const [existingCategoryKey, userList] of Object.entries(contentState.categories)) {
+            const userIndex = userList.indexOf(message.author.id);
+            if (userIndex > -1) {
+              userList.splice(userIndex, 1);
+            }
+          }
+
+          // Add user to new category
+          contentState.categories[categoryKey].push(message.author.id);
+          assignedCategory = categoryKey;
+          break;
+        }
       }
+
+      if (assignedCategory) {
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
     }
+
+    // === FF - Category-based assignment (3 categories) ===
+    if (contentType === 'ff') {
+      const categoryPatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        dps: /^x\s+(dps|d)$/i
+      };
+
+      let assignedCategory = null;
+
+      for (const [categoryKey, pattern] of Object.entries(categoryPatterns)) {
+        if (pattern.test(content)) {
+          // Check if user is already in this category
+          if (contentState.categories[categoryKey].includes(message.author.id)) {
+            await message.react('ℹ️');
+            return;
+          }
+
+          // Remove user from any other category
+          for (const [existingCategoryKey, userList] of Object.entries(contentState.categories)) {
+            const userIndex = userList.indexOf(message.author.id);
+            if (userIndex > -1) {
+              userList.splice(userIndex, 1);
+            }
+          }
+
+          // Add user to new category
+          contentState.categories[categoryKey].push(message.author.id);
+          assignedCategory = categoryKey;
+          break;
+        }
+      }
+
+      if (assignedCategory) {
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
+    }
+
     return;
   }
 
@@ -751,7 +1125,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      const result = deposit(mentionedUser.id, amount);
+      const result = deposit(message.guild.id, mentionedUser.id, amount);
 
       const embed = new EmbedBuilder()
         .setColor(0x2ecc71)
@@ -1100,19 +1474,43 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         const contentType = data.options[0].options[0].value;
-        const roleOption = data.options[0].options[1].value;
-        const threadTitle = data.options[0].options[2].value;
-        const zone = data.options[0].options[3].value;
-        const tier = data.options[0].options[4].value;
-        const time = data.options[0].options[5].value;
+        const threadTitle = data.options[0].options[1].value;
+        const zone = data.options[0].options[2].value;
+        const tier = data.options[0].options[3].value;
+        const time = data.options[0].options[4].value;
+        const demassNotice = data.options[0].options[5]?.value || '';
+        const targetCount = data.options[0].options[6]?.value || 10; // for FF only
         const channelId = req.body.channel_id;
 
+        // Reset contentState
         contentState.active = true;
         contentState.contentType = contentType;
+        contentState.title = threadTitle;
         contentState.zone = zone;
         contentState.tier = tier;
         contentState.time = time;
-        contentState.roles[roleOption] = userId;
+        contentState.demassNotice = demassNotice;
+        contentState.targetCount = targetCount;
+
+        // Reset roles (for ROA/GCAMPS)
+        contentState.roles = {
+          tank: null,
+          heal: null,
+          shadowcaller: null,
+          blazing: null,
+          badon: null
+        };
+
+        // Reset categories (for CTA/FF)
+        contentState.categories = {
+          tank: [],
+          heal: [],
+          dps: [],
+          support: [],
+          dtank: []
+        };
+
+        contentState.fill = [];
 
         const embed = buildContentEmbed();
 
@@ -1171,7 +1569,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         } catch (err) {
           console.error('   ❌ Error creating thread:', err);
           contentState.active = false;
-          contentState.roles[roleOption] = null;
 
           // Follow up with error message
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -1311,17 +1708,25 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         contentState.channelId = null;
         contentState.threadId = null;
         contentState.contentType = 'ff';
+        contentState.title = '';
         contentState.zone = 'Brecilien';
         contentState.tier = 7;
         contentState.time = '';
+        contentState.demassNotice = '';
+        contentState.targetCount = 10;
         contentState.roles = {
           tank: null,
           heal: null,
           shadowcaller: null,
           blazing: null,
-          mp: null,
-          mp2: null,
-          flex: null
+          badon: null
+        };
+        contentState.categories = {
+          tank: [],
+          heal: [],
+          dps: [],
+          support: [],
+          dtank: []
         };
         contentState.fill = [];
 
@@ -1457,7 +1862,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const targetUserId = data.options[0].options[0].value;
         const amount = data.options[0].options[1].value;
 
-        const result = deposit(targetUserId, amount);
+        const result = deposit(message.guild.id, targetUserId, amount);
 
         if (!result.success) {
           return res.send({

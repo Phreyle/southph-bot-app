@@ -1,6 +1,6 @@
 /**
  * Bank Economy System
- * Persistent storage using JSON file for user balances
+ * Persistent storage using JSON file for user balances (per guild)
  */
 
 import fs from 'fs';
@@ -13,95 +13,92 @@ const __dirname = path.dirname(__filename);
 // Currency symbol
 export const CURRENCY = '💰';
 
-// Database file path
-const DB_FILE = path.join(__dirname, 'bank-data.json');
-
-// Storage: userId -> balance
-const bankData = new Map();
+// Data directory
+const DATA_DIR = '/home/container';
+const getBankFile = (guildId) => path.join(DATA_DIR, `bank-data-${guildId}.json`);
 
 /**
- * Load bank data from file
+ * Load bank data from file for a guild
+ * @param {string} guildId
+ * @returns {Map} userId -> balance
  */
-function loadData() {
+function loadData(guildId) {
+  const file = getBankFile(guildId);
   try {
-    if (fs.existsSync(DB_FILE)) {
-      const rawData = fs.readFileSync(DB_FILE, 'utf8');
+    if (fs.existsSync(file)) {
+      const rawData = fs.readFileSync(file, 'utf8');
       const data = JSON.parse(rawData);
-      
-      // Load data into Map
-      for (const [userId, balance] of Object.entries(data)) {
-        bankData.set(userId, balance);
-      }
-      
-      console.log(`💾 Bank data loaded: ${bankData.size} users`);
-    } else {
-      console.log('💾 No existing bank data found, starting fresh');
+      return new Map(Object.entries(data));
     }
   } catch (error) {
-    console.error('❌ Error loading bank data:', error);
+    console.error(`❌ Error loading bank data for guild ${guildId}:`, error);
   }
+  return new Map();
 }
 
 /**
- * Save bank data to file
+ * Save bank data to file for a guild
+ * @param {string} guildId
+ * @param {Map} bankData
  */
-function saveData() {
+function saveData(guildId, bankData) {
+  const file = getBankFile(guildId);
   try {
     const data = Object.fromEntries(bankData);
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
-    console.log(`💾 Bank data saved: ${bankData.size} users`);
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch (error) {
-    console.error('❌ Error saving bank data:', error);
+    console.error(`❌ Error saving bank data for guild ${guildId}:`, error);
   }
 }
-
-// Load data when module is imported
-loadData();
 
 /**
  * Get user balance
- * @param {string} userId - Discord user ID
- * @returns {number} User balance
+ * @param {string} guildId
+ * @param {string} userId
+ * @returns {number}
  */
-export function getBalance(userId) {
-  return bankData.get(userId) || 0;
+export function getBalance(guildId, userId) {
+  const bankData = loadData(guildId);
+  return Number(bankData.get(userId)) || 0;
 }
 
 /**
  * Set user balance
- * @param {string} userId - Discord user ID
- * @param {number} amount - New balance amount
- * @returns {boolean} Success
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {number} amount
+ * @returns {boolean}
  */
-export function setBalance(userId, amount) {
+export function setBalance(guildId, userId, amount) {
   if (amount < 0) return false;
+  const bankData = loadData(guildId);
   if (amount === 0) {
     bankData.delete(userId);
   } else {
     bankData.set(userId, amount);
   }
-  saveData(); // Save after every change
+  saveData(guildId, bankData);
   return true;
 }
 
 /**
  * Deposit money to user account
- * @param {string} userId - Discord user ID
- * @param {number} amount - Amount to deposit
- * @returns {object} Result object
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {number} amount
+ * @returns {object}
  */
-export function deposit(userId, amount) {
+export function deposit(guildId, userId, amount) {
   if (amount <= 0) {
     return { success: false, error: 'Amount must be positive' };
   }
-  
-  const currentBalance = getBalance(userId);
+  const bankData = loadData(guildId);
+  const currentBalance = Number(bankData.get(userId)) || 0;
   const newBalance = currentBalance + amount;
-  
-  setBalance(userId, newBalance);
-  
-  return { 
-    success: true, 
+  bankData.set(userId, newBalance);
+  saveData(guildId, bankData);
+  return {
+    success: true,
     newBalance,
     deposited: amount
   };
@@ -109,69 +106,75 @@ export function deposit(userId, amount) {
 
 /**
  * Withdraw money from user account
- * @param {string} userId - Discord user ID
- * @param {number} amount - Amount to withdraw
- * @returns {object} Result object
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {number} amount
+ * @returns {object}
  */
-export function withdraw(userId, amount) {
+export function withdraw(guildId, userId, amount) {
   if (amount <= 0) {
     return { success: false, error: 'Amount must be positive' };
   }
-  
-  const currentBalance = getBalance(userId);
-  
+  const bankData = loadData(guildId);
+  const currentBalance = Number(bankData.get(userId)) || 0;
   if (currentBalance < amount) {
-    return { 
-      success: false, 
-      error: `Insufficient funds. Balance: ${CURRENCY}${currentBalance}` 
+    return {
+      success: false,
+      error: `Insufficient funds. Balance: ${CURRENCY}${currentBalance}`
     };
   }
-  
   const newBalance = currentBalance - amount;
-  setBalance(userId, newBalance);
-  
-  return { 
-    success: true, 
+  if (newBalance === 0) {
+    bankData.delete(userId);
+  } else {
+    bankData.set(userId, newBalance);
+  }
+  saveData(guildId, bankData);
+  return {
+    success: true,
     newBalance,
     withdrawn: amount
   };
 }
 
 /**
- * Get all users with non-zero balance
+ * Get all users with non-zero balance for a guild
+ * @param {string} guildId
  * @returns {Array} Array of [userId, balance] pairs
  */
-export function getActiveUsers() {
-  return Array.from(bankData.entries());
+export function getActiveUsers(guildId) {
+  const bankData = loadData(guildId);
+  return Array.from(bankData.entries()).filter(([_, balance]) => Number(balance) > 0);
 }
 
 /**
  * Check if user has balance
- * @param {string} userId - Discord user ID
- * @returns {boolean} Has balance
+ * @param {string} guildId
+ * @param {string} userId
+ * @returns {boolean}
  */
-export function hasBalance(userId) {
-  return bankData.has(userId);
+export function hasBalance(guildId, userId) {
+  const bankData = loadData(guildId);
+  return bankData.has(userId) && Number(bankData.get(userId)) > 0;
 }
 
 /**
  * Clear a specific user's balance
- * @param {string} userId - Discord user ID
- * @returns {object} Result object
+ * @param {string} guildId
+ * @param {string} userId
+ * @returns {object}
  */
-export function clearUser(userId) {
-  const currentBalance = getBalance(userId);
-  
+export function clearUser(guildId, userId) {
+  const bankData = loadData(guildId);
+  const currentBalance = Number(bankData.get(userId)) || 0;
   if (currentBalance === 0) {
     return {
       success: false,
       error: 'User has no balance to clear'
     };
   }
-  
   bankData.delete(userId);
-  saveData();
-  
+  saveData(guildId, bankData);
   return {
     success: true,
     clearedAmount: currentBalance
@@ -179,22 +182,21 @@ export function clearUser(userId) {
 }
 
 /**
- * Clear all users' balances
- * @returns {object} Result object
+ * Clear all users' balances for a guild
+ * @param {string} guildId
+ * @returns {object}
  */
-export function clearAll() {
+export function clearAll(guildId) {
+  const bankData = loadData(guildId);
   const userCount = bankData.size;
-  
   if (userCount === 0) {
     return {
       success: false,
       error: 'No users in the bank to clear'
     };
   }
-  
   bankData.clear();
-  saveData();
-  
+  saveData(guildId, bankData);
   return {
     success: true,
     clearedUsers: userCount

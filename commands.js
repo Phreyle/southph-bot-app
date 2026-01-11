@@ -43,21 +43,6 @@ const CONTENT_COMMAND = {
         },
         {
           type: 3,
-          name: 'role',
-          description: 'Your role for the content',
-          required: true,
-          choices: [
-            { name: 'Tank', value: 'tank' },
-            { name: 'Heal', value: 'heal' },
-            { name: 'Shadowcaller', value: 'shadowcaller' },
-            { name: 'Blazing', value: 'blazing' },
-            { name: 'MP', value: 'mp' },
-            { name: 'MP2', value: 'mp2' },
-            { name: 'Flex (MP/LC/ARCTIC/PERMA)', value: 'flex' },
-          ],
-        },
-        {
-          type: 3,
           name: 'title',
           description: 'Title for the content thread',
           required: true,
