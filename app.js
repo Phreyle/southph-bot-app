@@ -3,25 +3,9 @@ import { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits } from 'di
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import {
-  InteractionType,
-  InteractionResponseType,
-  verifyKeyMiddleware,
-} from 'discord-interactions';
+import {InteractionType,InteractionResponseType,verifyKeyMiddleware,} from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
-import { 
-  deposit, 
-  withdraw, 
-  getBalance, 
-  getActiveUsers, 
-  clearUser,
-  clearAll,
-  CURRENCY 
-} from './bank.js';
-import { createWorker } from 'tesseract.js';
-import axios from 'axios';
-import sharp from 'sharp';
+import { deposit, withdraw, getBalance, getActiveUsers, clearUser,clearAll,CURRENCY } from './bank.js';
 
 console.log('Interaction received at', Date.now());
 
@@ -34,7 +18,6 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 // Utility functions for per-guild files
-const getBankFile = (guildId) => path.join(DATA_DIR, `bank-data-${guildId}.json`);
 const getPrefixFile = (guildId) => path.join(DATA_DIR, `prefix-config-${guildId}.json`);
 const getPermissionsFile = (guildId) => path.join(DATA_DIR, `permissions-config-${guildId}.json`);
 
@@ -250,8 +233,6 @@ const contentState = {
   fill: [] // Array of user IDs who want to fill any remaining slots (ROA/GCAMPS only)
 };
 
-// Storage for regear threads (for OCR tracking)
-const regearThreads = new Set(); // Set of thread IDs for ctaregear and ffregear threads
 
 // Create a Discord client
 const client = new Client({ 
@@ -273,7 +254,8 @@ const buildContentEmbed = () => {
     'roa': '🏰',
     'cta': '⚔️',
     'gcamps': '🏕️',
-    'ff': '🛡️'
+    'ff': '🛡️',
+    'tracking': '🎯'
   }[contentType] || '🎮';
 
   // ROA - Fixed 7 slots
@@ -361,6 +343,33 @@ const buildContentEmbed = () => {
         `${statusLine}\n\n` +
         roleLines.join('\n') +
         fillSection
+      );
+  }
+
+  // Tracking - Fixed 5 slots (no fill mechanism)
+  if (contentType === 'tracking') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEAL**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} DPAIR**   ${contentState.roles.dpair ? '➡️ <@' + contentState.roles.dpair + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} HP CUT(RB/FORCEPULSE)**   ${contentState.roles.hpcut ? '➡️ <@' + contentState.roles.hpcut + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} FLEX DPS(DPAIR/WHISPERING/1H CURSE)**   ${contentState.roles.flexdps ? '➡️ <@' + contentState.roles.flexdps + '>' : ''}`
+    ];
+
+    const trackingRoles = ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'];
+    const filledSlots = trackingRoles.filter(key => contentState.roles[key] !== null).length;
+
+    let statusLine = `**Status:** ${filledSlots}/5`;
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`🎯 Tracking Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `${statusLine}\n\n` +
+        roleLines.join('\n')
       );
   }
 
@@ -569,180 +578,12 @@ async function autoAssignFillPlayers() {
   }
 }
 
-// OCR function to extract Est. Market Value from images
-async function extractMarketValueFromImage(imageUrl) {
-  try {
-    console.log('🔍 Starting OCR for image:', imageUrl);
-    
-    // Download the image
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-    const originalBuffer = Buffer.from(response.data, 'binary');
-    
-    // Try multiple preprocessing techniques
-    const preprocessingTechniques = [
-      {
-        name: 'High Contrast B&W',
-        process: async (buf) => sharp(buf)
-          .greyscale()
-          .normalize()
-          .threshold(128) // Binary threshold for stark contrast
-          .resize({ width: 3000, fit: 'inside', withoutEnlargement: false })
-          .toBuffer()
-      },
-      {
-        name: 'Enhanced Sharpening',
-        process: async (buf) => sharp(buf)
-          .greyscale()
-          .normalize()
-          .sharpen({ sigma: 2 })
-          .modulate({ brightness: 1.2, contrast: 1.5 })
-          .resize({ width: 3000, fit: 'inside', withoutEnlargement: false })
-          .toBuffer()
-      },
-      {
-        name: 'Inverted Colors',
-        process: async (buf) => sharp(buf)
-          .greyscale()
-          .normalize()
-          .negate()
-          .sharpen()
-          .resize({ width: 2500, fit: 'inside', withoutEnlargement: false })
-          .toBuffer()
-      }
-    ];
-    
-    let allExtractedText = [];
-    
-    // Try each preprocessing technique
-    for (const technique of preprocessingTechniques) {
-      console.log(`🖼️ Trying preprocessing: ${technique.name}...`);
-      const processedBuffer = await technique.process(originalBuffer);
-      
-      // Try multiple OCR configurations
-      const ocrConfigs = [
-        { name: 'Numbers Only', params: { tessedit_char_whitelist: '0123456789,.', tessedit_pageseg_mode: '6' } },
-        { name: 'With Text', params: { tessedit_char_whitelist: '0123456789,.EestMarkvlueVOo ', tessedit_pageseg_mode: '6' } },
-        { name: 'Default', params: { tessedit_pageseg_mode: '11' } }
-      ];
-      
-      for (const config of ocrConfigs) {
-        try {
-          const worker = await createWorker('eng');
-          await worker.setParameters(config.params);
-          const { data: { text } } = await worker.recognize(processedBuffer);
-          await worker.terminate();
-          
-          if (text && text.trim().length > 0) {
-            console.log(`   📝 ${technique.name} + ${config.name}: "${text.substring(0, 100).replace(/\n/g, ' ')}..."`);
-            allExtractedText.push(text);
-          }
-        } catch (err) {
-          console.log(`   ⚠️ ${technique.name} + ${config.name} failed:`, err.message);
-        }
-      }
-    }
-    
-    console.log(`\n📊 Total OCR attempts: ${allExtractedText.length}`);
-    console.log('🔎 Analyzing all extracted text for market value...\n');
-    
-    // Now analyze all extracted text
-    for (let i = 0; i < allExtractedText.length; i++) {
-      const text = allExtractedText[i];
-      
-      // Strategy 1: Look for comma-separated numbers (most reliable for market values)
-      const commaNumbers = text.match(/\b[0-9]{1,3}(?:,[0-9]{3})+\b/g);
-      if (commaNumbers && commaNumbers.length > 0) {
-        // Sort by value and return largest
-        const largest = commaNumbers.sort((a, b) => {
-          const aVal = parseInt(a.replace(/,/g, ''));
-          const bVal = parseInt(b.replace(/,/g, ''));
-          return bVal - aVal;
-        })[0];
-        
-        const numericValue = parseInt(largest.replace(/,/g, ''));
-        // Market values are typically > 1000
-        if (numericValue >= 1000) {
-          console.log(`✅ Found comma-separated number (Pass ${i + 1}):`, largest);
-          return largest;
-        }
-      }
-      
-      // Strategy 2: Look for any 6-7 digit numbers (without commas)
-      const largeNumbers = text.match(/\b[0-9]{6,7}\b/g);
-      if (largeNumbers && largeNumbers.length > 0) {
-        const largest = largeNumbers.sort((a, b) => parseInt(b) - parseInt(a))[0];
-        // Add commas for readability
-        const formatted = parseInt(largest).toLocaleString('en-US');
-        console.log(`✅ Found large number (Pass ${i + 1}):`, formatted);
-        return formatted;
-      }
-    }
-    
-    // Strategy 3: Look for ANY numbers and return the largest
-    console.log('🔎 Fallback: Looking for any numbers...');
-    let allNumbers = [];
-    for (const text of allExtractedText) {
-      const numbers = text.match(/\b[0-9,]+\b/g);
-      if (numbers) {
-        allNumbers = allNumbers.concat(numbers);
-      }
-    }
-    
-    if (allNumbers.length > 0) {
-      const sorted = allNumbers
-        .map(n => n.replace(/,/g, ''))
-        .filter(n => parseInt(n) >= 100) // At least 100
-        .sort((a, b) => parseInt(b) - parseInt(a));
-      
-      if (sorted.length > 0) {
-        const largest = parseInt(sorted[0]).toLocaleString('en-US');
-        console.log(`⚠️ Fallback found:`, largest);
-        return largest;
-      }
-    }
-    
-    console.log('❌ No market value found in image');
-    console.log('💡 All extracted text:');
-    allExtractedText.forEach((text, i) => {
-      console.log(`   Pass ${i + 1}: ${text.substring(0, 100).replace(/\n/g, ' ')}`);
-    });
-    return null;
-  } catch (error) {
-    console.error('❌ Error during OCR:', error);
-    return null;
-  }
-}
-
 // Listen for messages in the FFROA thread
 client.on('messageCreate', async (message) => {
   // Ignore bot messages
   if (message.author.bot) return;
 
   const prefix = loadPrefix(message.guild.id).prefix;
-
-  // Handle images in regear threads (CTA and FF regear)
-  if (regearThreads.has(message.channelId)) {
-    // Check if message has attachments (images)
-    if (message.attachments.size > 0) {
-      for (const attachment of message.attachments.values()) {
-        // Check if it's an image
-        if (attachment.contentType && attachment.contentType.startsWith('image/')) {
-          console.log('📸 Image detected in regear thread:', attachment.url);
-          
-          // Extract market value from image
-          const marketValue = await extractMarketValueFromImage(attachment.url);
-          
-          if (marketValue) {
-            // Post the extracted value in the thread
-            await message.reply({
-              content: `💰 **Est. Market Value:** ${marketValue}`,
-              allowedMentions: { repliedUser: false }
-            });
-          }
-        }
-      }
-    }
-  }
 
   // Handle content thread messages
   if (contentState.active && message.channelId === contentState.threadId) {
@@ -753,8 +594,8 @@ client.on('messageCreate', async (message) => {
     if (/^x\s+cancel$/i.test(content)) {
       let foundRole = false;
 
-      // For ROA/GCAMPS (fixed slots)
-      if (contentType === 'roa' || contentType === 'gcamps') {
+      // For ROA/GCAMPS/Tracking (fixed slots)
+      if (contentType === 'roa' || contentType === 'gcamps' || contentType === 'tracking') {
         for (const [roleKey, userId] of Object.entries(contentState.roles)) {
           if (userId === message.author.id) {
             contentState.roles[roleKey] = null;
@@ -763,7 +604,7 @@ client.on('messageCreate', async (message) => {
           }
         }
 
-        // Also check if user is in fill list
+        // Also check if user is in fill list (not applicable to tracking, but won't hurt)
         const fillIndex = contentState.fill.indexOf(message.author.id);
         if (fillIndex > -1) {
           contentState.fill.splice(fillIndex, 1);
@@ -901,6 +742,64 @@ client.on('messageCreate', async (message) => {
       if (assignedRole) {
         await autoAssignFillPlayers();
 
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
+    }
+
+    // === Tracking - Fixed slot assignment (similar to ROA but no fill) ===
+    if (contentType === 'tracking') {
+      const rolePatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        dpair: /^x\s+(dpair|dp)$/i,
+        hpcut: /^x\s+(hpcut|hp|rb|force|forcepulse)$/i,
+        flexdps: /^x\s+(flexdps|flex|fd|whispering|curse)$/i
+      };
+
+      let assignedRole = null;
+
+      for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+        if (pattern.test(content)) {
+          // Check if role is already taken by someone else
+          if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+            await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
+            return;
+          }
+
+          // If user already has this role, ignore
+          if (contentState.roles[roleKey] === message.author.id) {
+            await message.react('ℹ️');
+            return;
+          }
+
+          // Remove user from any other role they currently have
+          for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
+            if (existingUserId === message.author.id) {
+              contentState.roles[existingRoleKey] = null;
+            }
+          }
+
+          // Assign the new role
+          contentState.roles[roleKey] = message.author.id;
+          assignedRole = roleKey;
+          break;
+        }
+      }
+
+      if (assignedRole) {
         try {
           const embed = buildContentEmbed();
           await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
@@ -1058,7 +957,7 @@ client.on('messageCreate', async (message) => {
       // Show own balance or mentioned user's balance
       const mentionedUser = message.mentions.users.first();
       const targetUserId = mentionedUser?.id || message.author.id;
-      const balance = getBalance(targetUserId);
+      const balance = getBalance(message.guild.id, targetUserId);
 
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -1115,7 +1014,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      const result = withdraw(mentionedUser.id, amount);
+      const result = withdraw(message.guild.id, mentionedUser.id, amount);
 
       if (!result.success) {
         await message.reply(`❌ ${result.error}`);
@@ -1137,7 +1036,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (subcommand === 'active' || subcommand === 'list') {
-      const activeUsers = getActiveUsers();
+      const activeUsers = getActiveUsers(message.guild.id);
 
       if (activeUsers.length === 0) {
         await message.reply('📊 No users currently have money in the bank.');
@@ -1168,7 +1067,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      const result = clearUser(mentionedUser.id);
+      const result = clearUser(message.guild.id, mentionedUser.id);
 
       if (!result.success) {
         await message.reply(`❌ ${result.error}`);
@@ -1191,7 +1090,7 @@ client.on('messageCreate', async (message) => {
 
     if (subcommand === 'clearall') {
 
-      const result = clearAll();
+      const result = clearAll(message.guild.id);
 
       if (!result.success) {
         await message.reply(`❌ ${result.error}`);
@@ -1450,7 +1349,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         contentState.demassNotice = demassNotice;
         contentState.targetCount = targetCount;
 
-        // Reset roles (for ROA/GCAMPS)
+        // Reset roles (for ROA/GCAMPS/Tracking)
         contentState.roles = {
           tank: null,
           heal: null,
@@ -1459,7 +1358,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           shadowcaller: null,
           blazing: null,
           flex: null,
-          badon: null
+          badon: null,
+          dpair: null,
+          hpcut: null,
+          flexdps: null
         };
 
         // Reset categories (for CTA/FF)
@@ -1562,6 +1464,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const validRoles = {
           'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
           'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
+          'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
           'cta': ['tank', 'heal', 'dps', 'support', 'dtank'], // CTA uses categories, not fixed roles
           'ff': ['tank', 'heal', 'dps', 'support', 'dtank']    // FF uses categories, not fixed roles
         };
@@ -1640,6 +1543,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const validRoles = {
           'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
           'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
+          'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
           'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
           'ff': ['tank', 'heal', 'dps', 'support', 'dtank']
         };
@@ -1783,10 +1687,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const threadData = await threadResponse.json();
         const threadId = threadData.id;
         console.log(`   ✅ Thread created: ${threadId}`);
-
-        // Add thread to regear threads tracking (for OCR)
-        regearThreads.add(threadId);
-        console.log(`   📋 Added thread ${threadId} to regear tracking`);
 
         // Create embed based on content type
         const embedColor = contentType === 'cta' ? 0xe74c3c : 0x5865F2;
