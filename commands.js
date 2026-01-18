@@ -39,7 +39,7 @@ const CONTENT_COMMAND = {
             { name: 'CTA', value: 'cta' },
             { name: 'GCAMPS', value: 'gcamps' },
             { name: 'FF', value: 'ff' },
-            { name: 'Tracking', value: 'tracking' },
+            { name: 'Tracking', value: 'tracking' }
           ],
         },
         {
@@ -70,7 +70,7 @@ const CONTENT_COMMAND = {
         },
         {
           type: 3,
-          name: 'demassNotice',
+          name: 'demass_notice',
           description: 'demass notice message',
           required: false,
         }
