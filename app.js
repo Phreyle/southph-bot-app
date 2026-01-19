@@ -7,8 +7,6 @@ import {InteractionType,InteractionResponseType,verifyKeyMiddleware,} from 'disc
 import { DiscordRequest } from './utils.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser,clearAll,CURRENCY } from './bank.js';
 
-console.log('Interaction received at', Date.now());
-
 // Data directory from environment variable (default: /home/container/data)
 const DATA_DIR = process.env.DATA_DIR || '/home/container/data';
 
@@ -1260,22 +1258,22 @@ client.login(process.env.DISCORD_TOKEN);
  */
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
   // Interaction type and data
-  const { type, id, data } = req.body;
-
-  // DEBUG: Log all incoming interactions
-  console.log('========================================');
-  console.log('📥 INTERACTION RECEIVED');
-  console.log('Time:', new Date().toISOString());
-  console.log('Type:', type);
-  console.log('ID:', id);
-  console.log('Data:', JSON.stringify(data, null, 2));
-  console.log('========================================');
+  const { type, id, data, member, user } = req.body;
+  
+  // Extract user information
+  const executor = member?.user || user;
+  const userName = executor?.username || 'Unknown';
+  const userId = executor?.id || 'Unknown';
+  
+  // Clean logging with user info
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const commandName = data?.name ? `/${data.name}` : type === 2 ? 'Button' : 'Interaction';
+  console.log(`[${timestamp}] ${commandName} | User: ${userName} (${userId})`);
 
   /**
    * Handle verification requests
    */
   if (type === InteractionType.PING) {
-    console.log('✅ PING received, responding with PONG');
     return res.send({ type: InteractionResponseType.PONG });
   }
 
@@ -1285,11 +1283,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
    */
   if (type === InteractionType.APPLICATION_COMMAND) {
     const { name } = data;
-    console.log(`🔧 Processing slash command: /${name}`);
 
     // "/utc" command - Display current UTC time (Albion Online in-game time)
     if (name === 'utc') {
-      console.log('⏰ Executing /utc command');
       const now = new Date();
       const hours = String(now.getUTCHours()).padStart(2, '0');
       const minutes = String(now.getUTCMinutes()).padStart(2, '0');
@@ -2150,7 +2146,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
    */
   if (type === InteractionType.MESSAGE_COMPONENT) {
     const componentId = data.custom_id;
-    console.log(`🔘 Processing button interaction: ${componentId}`);
 
     // Handle FFROA button clicks (if you have any other button interactions)
     // Add other button handlers here if needed
