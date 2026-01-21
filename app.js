@@ -483,32 +483,10 @@ const buildContentEmbed = () => {
     } else {
       categoryLines.push('*(empty)*');
     }
-    categoryLines.push('');
-
-    // SUPPORT
-    categoryLines.push(`**${CUSTOM_EMOJIS.DEBUFF} SUPPORT (${categories.support.length})**`);
-    if (categories.support.length > 0) {
-      categories.support.forEach((uid, idx) => {
-        categoryLines.push(`${idx + 1}. <@${uid}>`);
-      });
-    } else {
-      categoryLines.push('*(empty)*');
-    }
-    categoryLines.push('');
-
-    // DTANK
-    categoryLines.push(`**${CUSTOM_EMOJIS.OFFTANK} DTANK (${categories.dtank.length})**`);
-    if (categories.dtank.length > 0) {
-      categories.dtank.forEach((uid, idx) => {
-        categoryLines.push(`${idx + 1}. <@${uid}>`);
-      });
-    } else {
-      categoryLines.push('*(empty)*');
-    }
 
     return new EmbedBuilder()
       .setColor(0x5865F2)
-      .setTitle(`${contentEmoji} FF Role Call (Fame Farm)`)
+      .setTitle(`${contentEmoji} FF Role Call`)
       .setDescription(
         `**__X UP ROLE!__**\n` +
         `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
@@ -1243,7 +1221,7 @@ client.on('messageCreate', async (message) => {
 
   // !help command
   if (command === 'help' || command === 'commands') {
-    const embed = buildHelpEmbed(message.member, false);
+    const embed = buildHelpEmbed(message.member, message.guild.id, false);
     await message.reply({ embeds: [embed] });
     return;
   }
@@ -1461,8 +1439,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
           'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
           'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
-          'cta': ['tank', 'heal', 'dps', 'support', 'dtank'], // CTA uses categories, not fixed roles
-          'ff': ['tank', 'heal', 'dps', 'support', 'dtank']    // FF uses categories, not fixed roles
+          'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
+          'ff': ['tank', 'heal', 'dps']
         };
 
         if (!validRoles[contentState.contentType].includes(roleOption)) {
@@ -1541,7 +1519,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
           'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
           'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
-          'ff': ['tank', 'heal', 'dps', 'support', 'dtank']
+          'ff': ['tank', 'heal', 'dps']
         };
 
         if (!validRoles[contentState.contentType].includes(roleOption)) {
@@ -1689,7 +1667,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const embedTitle = contentType === 'cta' ? '⚔️ CTA REGEAR' : '🛡️ FF REGEAR';
         const embedDescription = contentType === 'cta'
           ? `**SEND REGEAR HERE**\n**INCLUDE OC BREAK**\n**Time:** ${time}`
-          : `**SEND FF REGEAR HERE**\n**Time:** ${time}`;
+          : `**SEND REGEAR HERE**\n**Time:** ${time}`;
 
         const embed = new EmbedBuilder()
           .setColor(embedColor)
