@@ -1235,32 +1235,33 @@ client.login(process.env.DISCORD_TOKEN);
  * Parse request body and verifies incoming requests using discord-interactions package
  */
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
-  // Interaction type and data
-  const { type, id, data, member, user } = req.body;
-  
-  // Extract user information
-  const executor = member?.user || user;
-  const userName = executor?.username || 'Unknown';
-  const userId = executor?.id || 'Unknown';
-  
-  // Clean logging with user info
-  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-  const commandName = data?.name ? `/${data.name}` : type === 2 ? 'Button' : 'Interaction';
-  console.log(`[${timestamp}] ${commandName} | User: ${userName} (${userId})`);
+  try {
+    // Interaction type and data
+    const { type, id, data, member, user } = req.body;
+    
+    // Extract user information
+    const executor = member?.user || user;
+    const userName = executor?.username || 'Unknown';
+    const userId = executor?.id || 'Unknown';
+    
+    // Clean logging with user info
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const commandName = data?.name ? `/${data.name}` : type === 2 ? 'Button' : 'Interaction';
+    console.log(`[${timestamp}] ${commandName} | User: ${userName} (${userId})`);
 
-  /**
-   * Handle verification requests
-   */
-  if (type === InteractionType.PING) {
-    return res.send({ type: InteractionResponseType.PONG });
-  }
+    /**
+     * Handle verification requests
+     */
+    if (type === InteractionType.PING) {
+      return res.send({ type: InteractionResponseType.PONG });
+    }
 
-  /**
-   * Handle slash command requests
-   * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
-   */
-  if (type === InteractionType.APPLICATION_COMMAND) {
-    const { name } = data;
+    /**
+     * Handle slash command requests
+     * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
+     */
+    if (type === InteractionType.APPLICATION_COMMAND) {
+      const { name } = data;
 
     // "/utc" command - Display current UTC time (Albion Online in-game time)
     if (name === 'utc') {
@@ -1714,8 +1715,20 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const subcommand = data.options[0].name;
       console.log(`   Subcommand: ${subcommand}`);
       const context = req.body.context;
-      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+      const userId = context === 0 ? req.body.member?.user?.id : req.body.user?.id;
       const member = req.body.member;
+      const guildId = req.body.guild_id;
+
+      // Bank commands only work in guilds
+      if (!guildId) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Bank commands can only be used in a server.',
+            flags: 64 // EPHEMERAL
+          },
+        });
+      }
 
       // Check admin permission for deposit/withdraw
       const hasAdminPermission = hasPermissionSlash(member, 'bankAdminRoles');
@@ -1732,7 +1745,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options[0].value;
         const amount = data.options[0].options[1].value;
 
@@ -1778,7 +1790,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options[0].value;
         const amount = data.options[0].options[1].value;
 
@@ -1816,8 +1827,18 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: balance
       if (subcommand === 'balance') {
-        const guildId = req.body.guild_id;
-        const targetUserId = data.options[0].options?.[0]?.value || userId;
+        const targetUserId = data.options[0]?.options?.[0]?.value || userId;
+        
+        if (!targetUserId) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Unable to determine user for balance check.',
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
         const balance = getBalance(guildId, targetUserId);
 
         const embed = new EmbedBuilder()
@@ -1839,7 +1860,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Subcommand: active
       if (subcommand === 'active') {
-        const guildId = req.body.guild_id;
         const activeUsers = getActiveUsers(guildId);
 
         if (activeUsers.length === 0) {
@@ -1882,7 +1902,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const guildId = req.body.guild_id;
         const targetUserId = data.options[0].options[0].value;
         const result = clearUser(guildId, targetUserId);
 
@@ -1926,7 +1945,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
         }
 
-        const guildId = req.body.guild_id;
         const result = clearAll(guildId);
 
         if (!result.success) {
@@ -2134,6 +2152,20 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
   console.error('❌ Unknown interaction type:', type);
   return res.status(400).json({ error: 'unknown interaction type' });
+  } catch (error) {
+    console.error('❌ Error handling interaction:', error);
+    
+    // Try to respond to Discord if we haven't already
+    if (!res.headersSent) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ An error occurred while processing your command. Please try again.',
+          flags: 64 // EPHEMERAL
+        },
+      });
+    }
+  }
 });
 
 app.listen(PORT, () => {
