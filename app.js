@@ -87,7 +87,7 @@ function hasPermission(member, permissionType) {
 }
 
 // For slash commands (permissions are strings, not objects)
-function hasPermissionSlash(member, permissionType) {
+function hasPermissionSlash(member, permissionType, guildId) {
   // Always allow Discord Administrators
   if (member && member.permissions && 
     (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator)) {
@@ -95,7 +95,7 @@ function hasPermissionSlash(member, permissionType) {
   }
 
   // Check if user has any of the specified roles
-  const permissions = loadPermissions(member.guild.id);
+  const permissions = loadPermissions(guildId);
   const allowedRoles = permissions[permissionType] || [];
   
   if (!member.roles || allowedRoles.length === 0) {
@@ -115,11 +115,11 @@ function buildHelpEmbed(member, guildId, isSlashCommand = false) {
     : (member && member.permissions && member.permissions.has(PermissionFlagsBits.Administrator));
   
   const hasBankPerms = isSlashCommand 
-    ? hasPermissionSlash(member, 'bankAdminRoles')
+    ? hasPermissionSlash(member, 'bankAdminRoles', guildId)
     : hasPermission(member, 'bankAdminRoles');
   
   const hasCtaPerms = isSlashCommand 
-    ? hasPermissionSlash(member, 'ctaRegearRoles')
+    ? hasPermissionSlash(member, 'ctaRegearRoles', guildId)
     : hasPermission(member, 'ctaRegearRoles');
 
   const embed = new EmbedBuilder()
@@ -959,7 +959,7 @@ client.on('messageCreate', async (message) => {
       const mentionedUser = message.mentions.users.first();
       const amount = parseInt(args[1]);
 
-      if (!mentionedUser || !amount || amount <= 0) {
+      if (!mentionedUser || isNaN(amount) || amount <= 0) {
         await message.reply(`❌ Usage: \`${prefix}bank deposit @user <amount>\``);
         return;
       }
@@ -1236,6 +1236,8 @@ client.login(process.env.DISCORD_TOKEN);
  */
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
   try {
+    console.log('🔔 Interaction received:', JSON.stringify(req.body, null, 2));
+    
     // Interaction type and data
     const { type, id, data, member, user } = req.body;
     
@@ -1625,7 +1627,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       // Check permission for CTA regear
       const contentType = data.options[0].value;
       const member = req.body.member;
-      if (contentType === 'cta' && !hasPermissionSlash(member, 'ctaRegearRoles')) {
+      const guildId = req.body.guild_id;
+      if (contentType === 'cta' && !hasPermissionSlash(member, 'ctaRegearRoles', guildId)) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -1731,7 +1734,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       }
 
       // Check admin permission for deposit/withdraw
-      const hasAdminPermission = hasPermissionSlash(member, 'bankAdminRoles');
+      const hasAdminPermission = hasPermissionSlash(member, 'bankAdminRoles', guildId);
 
       // Subcommand: deposit
       if (subcommand === 'deposit') {
