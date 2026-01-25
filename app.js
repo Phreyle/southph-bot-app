@@ -1798,7 +1798,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
             method: 'PATCH',
             body: {
-              content: `✅ Regear thread closed and locked.\n\n⚠️ **Before closing, please confirm:**\n✓ All members deposited regear funds\n✓ All transactions verified`,
+              content: `✅ Regear thread closed and locked.\n\n⚠️ **Reminder:**\n• All members deposited regear funds\n• All transactions verified`,
               flags: 64
             },
           });
