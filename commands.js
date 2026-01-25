@@ -154,29 +154,41 @@ const CONTENT_COMMAND = {
 // Unified Regear command
 const REGEAR_COMMAND = {
   name: 'regear',
-  description: 'Create a regear thread',
+  description: 'Manage regear threads',
   options: [
     {
-      type: 3,
-      name: 'content_type',
-      description: 'Type of content',
-      required: true,
-      choices: [
-        { name: 'CTA', value: 'cta' },
-        { name: 'FF', value: 'ff' },
+      type: 1, // SUB_COMMAND
+      name: 'create',
+      description: 'Create a new regear thread',
+      options: [
+        {
+          type: 3,
+          name: 'content_type',
+          description: 'Type of content',
+          required: true,
+          choices: [
+            { name: 'CTA', value: 'cta' },
+            { name: 'FF', value: 'ff' },
+          ],
+        },
+        {
+          type: 3,
+          name: 'title',
+          description: 'Title for the regear thread',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'time',
+          description: 'Time for the regear (e.g., 20:00 UTC)',
+          required: true,
+        },
       ],
     },
     {
-      type: 3,
-      name: 'title',
-      description: 'Title for the regear thread',
-      required: true,
-    },
-    {
-      type: 3,
-      name: 'time',
-      description: 'Time for the regear (e.g., 20:00 UTC)',
-      required: true,
+      type: 1, // SUB_COMMAND
+      name: 'close',
+      description: 'Close a regear thread (locks & marks complete)',
     },
   ],
   type: 1,

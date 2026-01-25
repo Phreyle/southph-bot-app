@@ -151,7 +151,8 @@ function buildHelpEmbed(member, guildId, isSlashCommand = false) {
   // CTA Regear Commands
   if (hasCtaPerms || isAdmin) {
     description += `**⚔️ Regear Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
-    description += `• \`/regear [cta|ff] [title] [time]\` - Create a regear thread\n\n`;
+    description += `• \`/regear create [cta|ff] [title] [time]\` - Create a regear thread\n`;
+    description += `• \`/regear close\` - Close and lock the current regear thread\n\n`;
   }
 
   // Full Admin Commands (Only for Discord Administrators)
@@ -1620,96 +1621,202 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       }
     }
 
-    // "/regear" command - Create regear thread (unified CTA/FF)
+    // "/regear" command - Manage regear threads (unified CTA/FF)
     if (name === 'regear') {
       console.log('⚔️ Executing /regear command');
-
-      // Check permission for CTA regear
-      const contentType = data.options[0].value;
+      
+      const subcommand = data.options[0].name;
       const member = req.body.member;
       const guildId = req.body.guild_id;
-      if (contentType === 'cta' && !hasPermissionSlash(member, 'ctaRegearRoles', guildId)) {
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: '❌ You need Administrator permission or an authorized role to use this command for CTA regear.',
-            flags: 64 // EPHEMERAL
-          },
-        });
-      }
 
-      const threadTitle = data.options[1].value;
-      const time = data.options[2].value;
-      const channelId = req.body.channel_id;
+      // Subcommand: create
+      if (subcommand === 'create') {
+        console.log('   Creating new regear thread...');
 
-      // Defer the response
-      console.log('   ⏳ Deferring response...');
-      res.send({
-        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          flags: 64 // EPHEMERAL
+        // Check permission for CTA regear
+        const contentType = data.options[0].options[0].value;
+        if (contentType === 'cta' && !hasPermissionSlash(member, 'ctaRegearRoles', guildId)) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ You need Administrator permission or an authorized role to use this command for CTA regear.',
+              flags: 64 // EPHEMERAL
+            },
+          });
         }
-      });
 
-      try {
-        // Create a thread in the channel
-        console.log(`   📝 Creating ${contentType.toUpperCase()} regear thread...`);
-        const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
-          method: 'POST',
-          body: {
-            name: threadTitle,
-            type: 11, // PUBLIC_THREAD
-            auto_archive_duration: 1440 // 24 hours
-          },
-        });
-        const threadData = await threadResponse.json();
-        const threadId = threadData.id;
-        console.log(`   ✅ Thread created: ${threadId}`);
+        const threadTitle = data.options[0].options[1].value;
+        const time = data.options[0].options[2].value;
+        const channelId = req.body.channel_id;
 
-        // Create embed based on content type
-        const embedColor = contentType === 'cta' ? 0xe74c3c : 0x5865F2;
-        const embedTitle = contentType === 'cta' ? '⚔️ CTA REGEAR' : '🛡️ FF REGEAR';
-        const embedDescription = contentType === 'cta'
-          ? `**SEND REGEAR HERE**\n**INCLUDE OC BREAK**\n**Time:** ${time}`
-          : `**SEND REGEAR HERE**\n**Time:** ${time}`;
-
-        const embed = new EmbedBuilder()
-          .setColor(embedColor)
-          .setTitle(embedTitle)
-          .setDescription(embedDescription);
-
-        // Post the message in the thread
-        await DiscordRequest(`channels/${threadId}/messages`, {
-          method: 'POST',
-          body: {
-            content:"<@&1344897722196430879>",
-            embeds: [embed.toJSON()]
-          },
+        // Defer the response
+        console.log('   ⏳ Deferring response...');
+        res.send({
+          type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            flags: 64 // EPHEMERAL
+          }
         });
 
-        // Follow up with success message
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: `✅ ${contentType.toUpperCase()} regear thread created: **${threadTitle}**`,
-            flags: 64
-          },
-        });
-        console.log(`   ✅ /regear ${contentType} completed successfully`);
+        try {
+          // Create a thread in the channel
+          console.log(`   📝 Creating ${contentType.toUpperCase()} regear thread...`);
+          const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
+            method: 'POST',
+            body: {
+              name: threadTitle,
+              type: 11, // PUBLIC_THREAD
+              auto_archive_duration: 1440 // 24 hours
+            },
+          });
+          const threadData = await threadResponse.json();
+          const threadId = threadData.id;
+          console.log(`   ✅ Thread created: ${threadId}`);
 
-      } catch (err) {
-        console.error(`   ❌ Error creating ${contentType} regear thread:`, err);
+          // Create embed based on content type
+          const embedColor = contentType === 'cta' ? 0xe74c3c : 0x5865F2;
+          const embedTitle = contentType === 'cta' ? '⚔️ CTA REGEAR' : '🛡️ FF REGEAR';
+          const embedDescription = contentType === 'cta'
+            ? `**SEND REGEAR HERE**\n**INCLUDE OC BREAK**\n**Time:** ${time}`
+            : `**SEND REGEAR HERE**\n**Time:** ${time}`;
 
-        // Follow up with error message
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: `❌ Failed to create ${contentType.toUpperCase()} regear thread.`,
-            flags: 64
-          },
-        });
+          const embed = new EmbedBuilder()
+            .setColor(embedColor)
+            .setTitle(embedTitle)
+            .setDescription(embedDescription);
+
+          // Post the message in the thread
+          await DiscordRequest(`channels/${threadId}/messages`, {
+            method: 'POST',
+            body: {
+              content:"<@&1344897722196430879>",
+              embeds: [embed.toJSON()]
+            },
+          });
+
+          // Follow up with success message
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: `✅ ${contentType.toUpperCase()} regear thread created: **${threadTitle}**`,
+              flags: 64
+            },
+          });
+          console.log(`   ✅ /regear create ${contentType} completed successfully`);
+
+        } catch (err) {
+          console.error(`   ❌ Error creating ${contentType} regear thread:`, err);
+
+          // Follow up with error message
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: `❌ Failed to create ${contentType.toUpperCase()} regear thread.`,
+              flags: 64
+            },
+          });
+        }
+        return;
       }
-      return;
+
+      // Subcommand: close
+      if (subcommand === 'close') {
+        console.log('   Closing regear thread...');
+
+        // Check permission for regear close
+        if (!hasPermissionSlash(member, 'ctaRegearRoles', guildId)) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ You need Administrator permission or an authorized role to close regear threads.',
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
+        const channelId = req.body.channel_id;
+
+        // Defer the response
+        console.log('   ⏳ Deferring response...');
+        res.send({
+          type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            flags: 64 // EPHEMERAL
+          }
+        });
+
+        try {
+          // Get channel/thread info
+          const channelResponse = await DiscordRequest(`channels/${channelId}`, {
+            method: 'GET'
+          });
+          const channelData = await channelResponse.json();
+
+          // Check if this is a thread
+          if (channelData.type !== 11 && channelData.type !== 12) {
+            await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+              method: 'PATCH',
+              body: {
+                content: '❌ This command must be used inside a thread.',
+                flags: 64
+              },
+            });
+            return;
+          }
+
+          const currentName = channelData.name;
+
+          // Check if already closed (idempotency)
+          if (currentName.includes('[✓]') || currentName.includes('(REGEARED)') || 
+              currentName.includes('(CLEARED)') || currentName.includes('(COMPLETED)')) {
+            await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+              method: 'PATCH',
+              body: {
+                content: '⚠️ This thread is already closed.',
+                flags: 64
+              },
+            });
+            return;
+          }
+
+          // Rename thread with [✓] suffix
+          const newName = `${currentName} [✓]`;
+          
+          // Update thread: rename and lock
+          await DiscordRequest(`channels/${channelId}`, {
+            method: 'PATCH',
+            body: {
+              name: newName.substring(0, 100), // Discord 100 char limit
+              locked: true,
+              archived: false // Keep it visible but locked
+            },
+          });
+
+          console.log(`   ✅ Thread closed: ${currentName} → ${newName}`);
+
+          // Follow up with success message
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: `✅ Regear thread closed and locked.\n\n⚠️ **Before closing, please confirm:**\n✓ All members deposited regear funds\n✓ All transactions verified`,
+              flags: 64
+            },
+          });
+
+        } catch (err) {
+          console.error('   ❌ Error closing regear thread:', err);
+
+          // Follow up with error message
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: '❌ Failed to close regear thread. Make sure you have MANAGE_THREADS permission.',
+              flags: 64
+            },
+          });
+        }
+        return;
+      }
     }
 
     // "/bank" command - Bank economy system
