@@ -1794,26 +1794,34 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
           console.log(`   ✅ Thread closed: ${currentName} → ${newName}`);
 
-          // Follow up with success message
-          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-            method: 'PATCH',
-            body: {
-              content: `✅ Regear thread closed and locked.\n\n⚠️ **Reminder:**\n• All members deposited regear funds\n• All transactions verified`,
-              flags: 64
-            },
-          });
+          // Try to send follow-up message (might fail if token expired, but thread is already closed)
+          try {
+            await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+              method: 'PATCH',
+              body: {
+                content: `✅ Thread closed and locked.`,
+                flags: 64
+              },
+            });
+          } catch (webhookErr) {
+            console.log('   ⚠️ Thread closed successfully but could not send confirmation message (token expired)');
+          }
 
         } catch (err) {
           console.error('   ❌ Error closing regear thread:', err);
 
-          // Follow up with error message
-          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-            method: 'PATCH',
-            body: {
-              content: '❌ Failed to close regear thread. Make sure you have MANAGE_THREADS permission.',
-              flags: 64
-            },
-          });
+          // Try to send error message (might fail if token expired)
+          try {
+            await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+              method: 'PATCH',
+              body: {
+                content: '❌ Failed to close regear thread.',
+                flags: 64
+              },
+            });
+          } catch (webhookErr) {
+            console.log('   ⚠️ Could not send error message (token expired)');
+          }
         }
         return;
       }
