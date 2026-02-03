@@ -260,13 +260,13 @@ const buildContentEmbed = () => {
   // ROA - Fixed 7 slots
   if (contentType === 'roa') {
     const roleLines = [
-      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
-      `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
-      `**3. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp ? '➡️ <@' + contentState.roles.mp + '>' : ''}`,
-      `**4. ${CUSTOM_EMOJIS.DPS} MIST PIERCER**   ${contentState.roles.mp2 ? '➡️ <@' + contentState.roles.mp2 + '>' : ''}`,
-      `**5. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
-      `**6. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
-      `**7. ${CUSTOM_EMOJIS.DPS} FLEX (MP/LC/ARCTIC/PERMA)**   ${contentState.roles.flex ? '➡️ <@' + contentState.roles.flex + '>' : ''}`
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEALER (heal)**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} MIST PIERCER (mp)**   ${contentState.roles.mp ? '➡️ <@' + contentState.roles.mp + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} MIST PIERCER (mp2)**   ${contentState.roles.mp2 ? '➡️ <@' + contentState.roles.mp2 + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER (shadowcaller)**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
+      `**6. ${CUSTOM_EMOJIS.DPS} BLAZING (blazing)**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
+      `**7. ${CUSTOM_EMOJIS.DPS} FLEX (MP/LC/ARCTIC/PERMA) (flex)**   ${contentState.roles.flex ? '➡️ <@' + contentState.roles.flex + '>' : ''}`
     ];
 
     const roaRoles = ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'];
@@ -305,11 +305,11 @@ const buildContentEmbed = () => {
   // GCAMPS - Fixed 5 slots
   if (contentType === 'gcamps') {
     const roleLines = [
-      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
-      `**2. ${CUSTOM_EMOJIS.HEALER} HEALER**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
-      `**3. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
-      `**4. ${CUSTOM_EMOJIS.DPS} BLAZING**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
-      `**5. ${CUSTOM_EMOJIS.DPS} BADON**   ${contentState.roles.badon ? '➡️ <@' + contentState.roles.badon + '>' : ''}`
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEALER (heal)**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER (shadowcaller)**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} BLAZING (blazing)**   ${contentState.roles.blazing ? '➡️ <@' + contentState.roles.blazing + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} BADON (badon)**   ${contentState.roles.badon ? '➡️ <@' + contentState.roles.badon + '>' : ''}`
     ];
 
     const gcampsRoles = ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'];
@@ -348,11 +348,11 @@ const buildContentEmbed = () => {
   // Tracking - Fixed 5 slots (no fill mechanism)
   if (contentType === 'tracking') {
     const roleLines = [
-      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
-      `**2. ${CUSTOM_EMOJIS.HEALER} HEAL**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
-      `**3. ${CUSTOM_EMOJIS.DPS} DPAIR**   ${contentState.roles.dpair ? '➡️ <@' + contentState.roles.dpair + '>' : ''}`,
-      `**4. ${CUSTOM_EMOJIS.DPS} HP CUT(RB/FORCEPULSE)**   ${contentState.roles.hpcut ? '➡️ <@' + contentState.roles.hpcut + '>' : ''}`,
-      `**5. ${CUSTOM_EMOJIS.DPS} FLEX DPS(DPAIR/WHISPERING/1H CURSE)**   ${contentState.roles.flexdps ? '➡️ <@' + contentState.roles.flexdps + '>' : ''}`
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEAL (heal)**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} DPAIR (dpair)**   ${contentState.roles.dpair ? '➡️ <@' + contentState.roles.dpair + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} HP CUT(RB/FORCEPULSE) (hpcut)**   ${contentState.roles.hpcut ? '➡️ <@' + contentState.roles.hpcut + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} FLEX DPS(DPAIR/WHISPERING/1H CURSE) (flexdps)**   ${contentState.roles.flexdps ? '➡️ <@' + contentState.roles.flexdps + '>' : ''}`
     ];
 
     const trackingRoles = ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'];
