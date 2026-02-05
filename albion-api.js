@@ -8,10 +8,18 @@ import axios from 'axios';
  * API Documentation: https://github.com/broderickhyman/ao-killboard
  * Base URLs:
  * - Americas: https://gameinfo.albiononline.com/api/gameinfo
- * - Europe: https://gameinfo-sgp.albiononline.com/api/gameinfo (for Asia/Oceania)
+ * - Europe: https://gameinfo-ams.albiononline.com/api/gameinfo
+ * - Asia: https://gameinfo-sgp.albiononline.com/api/gameinfo
  */
 
-const API_BASE_URL = 'https://gameinfo.albiononline.com/api/gameinfo';
+// All available regions
+const REGIONS = [
+  { name: 'Americas', baseUrl: 'https://gameinfo.albiononline.com/api/gameinfo' },
+  { name: 'Europe', baseUrl: 'https://gameinfo-ams.albiononline.com/api/gameinfo' },
+  { name: 'Asia', baseUrl: 'https://gameinfo-sgp.albiononline.com/api/gameinfo' }
+];
+
+const API_BASE_URL = 'https://gameinfo.albiononline.com/api/gameinfo'; // Default for non-search operations
 
 // Rate limiting configuration
 const RATE_LIMIT = {
@@ -57,23 +65,40 @@ async function rateLimitedRequest(url, options = {}) {
 }
 
 /**
- * Search for a player by name
+ * Search for a player by name across all regions
  * @param {string} playerName - Player name to search
- * @returns {Promise<object|null>} Player object with id, name, etc., or null if not found
+ * @returns {Promise<object|null>} Player object with id, name, region, etc., or null if not found
  */
 export async function searchPlayer(playerName) {
   try {
-    const url = `${API_BASE_URL}/search?q=${encodeURIComponent(playerName)}`;
-    const data = await rateLimitedRequest(url);
-    
-    // API returns { players: [], guilds: [] }
-    if (data.players && data.players.length > 0) {
-      // Return the first exact match or closest match
-      const exactMatch = data.players.find(
-        p => p.Name.toLowerCase() === playerName.toLowerCase()
-      );
-      return exactMatch || data.players[0];
+    // Search across all regions
+    for (const region of REGIONS) {
+      try {
+        const url = `${region.baseUrl}/search?q=${encodeURIComponent(playerName)}`;
+        const data = await rateLimitedRequest(url);
+        
+        // API returns { players: [], guilds: [] }
+        if (data.players && data.players.length > 0) {
+          // Find exact match (case-insensitive)
+          const exactMatch = data.players.find(
+            p => p.Name.toLowerCase() === playerName.toLowerCase()
+          );
+          const player = exactMatch || data.players[0];
+          
+          // Add region info to the player object
+          player.Region = region.name;
+          player.ApiBaseUrl = region.baseUrl;
+          
+          console.log(`Found player ${player.Name} in ${region.name} region`);
+          return player;
+        }
+      } catch (error) {
+        console.error(`Error searching ${region.name} for player ${playerName}:`, error.message);
+        // Continue to next region
+      }
     }
+    
+    console.log(`Player ${playerName} not found in any region`);
     return null;
   } catch (error) {
     console.error(`Error searching for player ${playerName}:`, error.message);
@@ -82,23 +107,40 @@ export async function searchPlayer(playerName) {
 }
 
 /**
- * Search for a guild by name
+ * Search for a guild by name across all regions
  * @param {string} guildName - Guild name to search
- * @returns {Promise<object|null>} Guild object with Id, Name, etc., or null if not found
+ * @returns {Promise<object|null>} Guild object with Id, Name, region, etc., or null if not found
  */
 export async function searchGuild(guildName) {
   try {
-    const url = `${API_BASE_URL}/search?q=${encodeURIComponent(guildName)}`;
-    const data = await rateLimitedRequest(url);
-    
-    // API returns { players: [], guilds: [] }
-    if (data.guilds && data.guilds.length > 0) {
-      // Return the first exact match or closest match
-      const exactMatch = data.guilds.find(
-        g => g.Name.toLowerCase() === guildName.toLowerCase()
-      );
-      return exactMatch || data.guilds[0];
+    // Search across all regions
+    for (const region of REGIONS) {
+      try {
+        const url = `${region.baseUrl}/search?q=${encodeURIComponent(guildName)}`;
+        const data = await rateLimitedRequest(url);
+        
+        // API returns { players: [], guilds: [] }
+        if (data.guilds && data.guilds.length > 0) {
+          // Find exact match (case-insensitive)
+          const exactMatch = data.guilds.find(
+            g => g.Name.toLowerCase() === guildName.toLowerCase()
+          );
+          const guild = exactMatch || data.guilds[0];
+          
+          // Add region info to the guild object
+          guild.Region = region.name;
+          guild.ApiBaseUrl = region.baseUrl;
+          
+          console.log(`Found guild ${guild.Name} in ${region.name} region`);
+          return guild;
+        }
+      } catch (error) {
+        console.error(`Error searching ${region.name} for guild ${guildName}:`, error.message);
+        // Continue to next region
+      }
     }
+    
+    console.log(`Guild ${guildName} not found in any region`);
     return null;
   } catch (error) {
     console.error(`Error searching for guild ${guildName}:`, error.message);
@@ -127,11 +169,13 @@ export async function getRecentEvents(limit = 50, offset = 0) {
  * Get kills for a specific player
  * @param {string} playerId - Albion Online player ID
  * @param {number} limit - Number of kills to fetch (default: 50)
+ * @param {string} apiBaseUrl - Optional custom API base URL for specific region
  * @returns {Promise<Array>} Array of kill event objects
  */
-export async function getPlayerKills(playerId, limit = 50) {
+export async function getPlayerKills(playerId, limit = 50, apiBaseUrl = null) {
   try {
-    const url = `${API_BASE_URL}/players/${playerId}/kills?limit=${limit}`;
+    const baseUrl = apiBaseUrl || API_BASE_URL;
+    const url = `${baseUrl}/players/${playerId}/kills?limit=${limit}`;
     const data = await rateLimitedRequest(url);
     return data || [];
   } catch (error) {
@@ -144,11 +188,13 @@ export async function getPlayerKills(playerId, limit = 50) {
  * Get deaths for a specific player
  * @param {string} playerId - Albion Online player ID
  * @param {number} limit - Number of deaths to fetch (default: 50)
+ * @param {string} apiBaseUrl - Optional custom API base URL for specific region
  * @returns {Promise<Array>} Array of death event objects
  */
-export async function getPlayerDeaths(playerId, limit = 50) {
+export async function getPlayerDeaths(playerId, limit = 50, apiBaseUrl = null) {
   try {
-    const url = `${API_BASE_URL}/players/${playerId}/deaths?limit=${limit}`;
+    const baseUrl = apiBaseUrl || API_BASE_URL;
+    const url = `${baseUrl}/players/${playerId}/deaths?limit=${limit}`;
     const data = await rateLimitedRequest(url);
     return data || [];
   } catch (error) {
@@ -161,11 +207,13 @@ export async function getPlayerDeaths(playerId, limit = 50) {
  * Get kills/deaths for a specific guild
  * @param {string} guildId - Albion Online guild ID
  * @param {number} limit - Number of events to fetch (default: 50)
+ * @param {string} apiBaseUrl - Optional custom API base URL for specific region
  * @returns {Promise<Array>} Array of event objects
  */
-export async function getGuildEvents(guildId, limit = 50) {
+export async function getGuildEvents(guildId, limit = 50, apiBaseUrl = null) {
   try {
-    const url = `${API_BASE_URL}/guilds/${guildId}/kills?limit=${limit}`;
+    const baseUrl = apiBaseUrl || API_BASE_URL;
+    const url = `${baseUrl}/guilds/${guildId}/kills?limit=${limit}`;
     const data = await rateLimitedRequest(url);
     return data || [];
   } catch (error) {
@@ -298,27 +346,30 @@ export async function getGuildInfo(guildId) {
 }
 
 /**
- * Batch fetch events for multiple players
- * This is more efficient than individual requests when tracking many players
- * @param {Array<string>} playerIds - Array of player IDs
+ * Batch fetch evobject>} players - Array of player objects with { id, apiBaseUrl }
  * @param {number} eventsPerPlayer - Number of events to fetch per player
  * @returns {Promise<Array>} Combined array of all events
  */
-export async function batchFetchPlayerEvents(playerIds, eventsPerPlayer = 10) {
+export async function batchFetchPlayerEvents(players, eventsPerPlayer = 10) {
   const allEvents = [];
   
-  for (const playerId of playerIds) {
+  for (const player of players) {
     try {
+      const playerId = player.id || player;
+      const apiBaseUrl = player.apiBaseUrl || null;
+      
       // Fetch both kills and deaths
       const [kills, deaths] = await Promise.all([
-        getPlayerKills(playerId, eventsPerPlayer),
-        getPlayerDeaths(playerId, eventsPerPlayer)
+        getPlayerKills(playerId, eventsPerPlayer, apiBaseUrl),
+        getPlayerDeaths(playerId, eventsPerPlayer, apiBaseUrl)
       ]);
       
       allEvents.push(...kills, ...deaths);
       
       // Small delay between players to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+      console.error(`Error fetching events for player ${player.id || player
     } catch (error) {
       console.error(`Error fetching events for player ${playerId}:`, error.message);
     }
@@ -331,22 +382,25 @@ export async function batchFetchPlayerEvents(playerIds, eventsPerPlayer = 10) {
   
   return uniqueEvents.sort((a, b) => b.EventId - a.EventId);
 }
-
-/**
- * Batch fetch events for multiple guilds
- * @param {Array<string>} guildIds - Array of guild IDs
+object>} guilds - Array of guild objects with { id, apiBaseUrl }
  * @param {number} eventsPerGuild - Number of events to fetch per guild
  * @returns {Promise<Array>} Combined array of all events
  */
-export async function batchFetchGuildEvents(guildIds, eventsPerGuild = 20) {
+export async function batchFetchGuildEvents(guilds, eventsPerGuild = 20) {
   const allEvents = [];
   
-  for (const guildId of guildIds) {
+  for (const guild of guilds) {
     try {
-      const events = await getGuildEvents(guildId, eventsPerGuild);
+      const guildId = guild.id || guild;
+      const apiBaseUrl = guild.apiBaseUrl || null;
+      
+      const events = await getGuildEvents(guildId, eventsPerGuild, apiBaseUrl);
       allEvents.push(...events);
       
       // Small delay between guilds
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+      console.error(`Error fetching events for guild ${guild.id || guil
       await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
       console.error(`Error fetching events for guild ${guildId}:`, error.message);

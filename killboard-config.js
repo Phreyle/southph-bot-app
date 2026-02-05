@@ -84,9 +84,11 @@ export function setKillboardChannel(guildId, channelId) {
  * @param {string} guildId - Discord guild ID
  * @param {string} playerName - Albion Online player name
  * @param {string} playerId - Albion Online player ID
+ * @param {string} region - Albion region (Americas, Europe, Asia)
+ * @param {string} apiBaseUrl - API base URL for the player's region
  * @returns {boolean} True if added, false if already exists
  */
-export function addTrackedPlayer(guildId, playerName, playerId) {
+export function addTrackedPlayer(guildId, playerName, playerId, region = 'Americas', apiBaseUrl = null) {
   const config = loadKillboardConfig(guildId);
   
   // Check if player already tracked
@@ -95,7 +97,12 @@ export function addTrackedPlayer(guildId, playerName, playerId) {
     return false;
   }
   
-  config.trackedPlayers.push({ name: playerName, id: playerId });
+  config.trackedPlayers.push({ 
+    name: playerName, 
+    id: playerId,
+    region: region,
+    apiBaseUrl: apiBaseUrl
+  });
   saveKillboardConfig(guildId, config);
   return true;
 }
@@ -126,9 +133,11 @@ export function removeTrackedPlayer(guildId, playerIdentifier) {
  * @param {string} guildId - Discord guild ID
  * @param {string} guildName - Albion Online guild name
  * @param {string} albionGuildId - Albion Online guild ID
+ * @param {string} region - Albion region (Americas, Europe, Asia)
+ * @param {string} apiBaseUrl - API base URL for the guild's region
  * @returns {boolean} True if added, false if already exists
  */
-export function addTrackedGuild(guildId, guildName, albionGuildId) {
+export function addTrackedGuild(guildId, guildName, albionGuildId, region = 'Americas', apiBaseUrl = null) {
   const config = loadKillboardConfig(guildId);
   
   // Check if guild already tracked
@@ -137,7 +146,12 @@ export function addTrackedGuild(guildId, guildName, albionGuildId) {
     return false;
   }
   
-  config.trackedGuilds.push({ name: guildName, id: albionGuildId });
+  config.trackedGuilds.push({ 
+    name: guildName, 
+    id: albionGuildId,
+    region: region,
+    apiBaseUrl: apiBaseUrl
+  });
   saveKillboardConfig(guildId, config);
   return true;
 }

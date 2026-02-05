@@ -2455,7 +2455,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             }
 
             // Add player to tracking
-            const added = addTrackedPlayer(guildId, player.Name, player.Id);
+            const added = addTrackedPlayer(guildId, player.Name, player.Id, player.Region, player.ApiBaseUrl);
 
             if (!added) {
               await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -2470,7 +2470,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
               method: 'PATCH',
               body: {
-                content: `✅ Now tracking player **${player.Name}** (ID: ${player.Id})\n` +
+                content: `✅ Now tracking player **${player.Name}** (${player.Region} region)\n` +
                         `Kill/death events will be posted to your configured channel.`
               }
             });
@@ -2511,7 +2511,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             }
 
             // Add guild to tracking
-            const added = addTrackedGuild(guildId, guild.Name, guild.Id);
+            const added = addTrackedGuild(guildId, guild.Name, guild.Id, guild.Region, guild.ApiBaseUrl);
 
             if (!added) {
               await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -2526,7 +2526,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
               method: 'PATCH',
               body: {
-                content: `✅ Now tracking guild **${guild.Name}** (ID: ${guild.Id})\n` +
+                content: `✅ Now tracking guild **${guild.Name}** (${guild.Region} region)\n` +
                         `Kill/death events involving this guild will be posted to your configured channel.`
               }
             });
@@ -2615,7 +2615,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         // Add tracked players field
         if (config.trackedPlayers.length > 0) {
           const playerList = config.trackedPlayers
-            .map(p => `• ${p.name}`)
+            .map(p => `• ${p.name} (${p.region || 'Americas'})`)
             .join('\n');
           embed.addFields({ name: '👤 Tracked Players', value: playerList, inline: false });
         } else {
@@ -2625,7 +2625,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         // Add tracked guilds field
         if (config.trackedGuilds.length > 0) {
           const guildList = config.trackedGuilds
-            .map(g => `• ${g.name}`)
+            .map(g => `• ${g.name} (${g.region || 'Americas'})`)
             .join('\n');
           embed.addFields({ name: '🏰 Tracked Guilds', value: guildList, inline: false });
         } else {

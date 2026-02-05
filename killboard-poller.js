@@ -138,17 +138,15 @@ async function pollGuild(guildId) {
     // Fetch events for tracked players
     let playerEvents = [];
     if (config.trackedPlayers.length > 0) {
-      const playerIds = config.trackedPlayers.map(p => p.id);
-      console.log(`Fetching events for ${playerIds.length} tracked player(s) in guild ${guildId}`);
-      playerEvents = await batchFetchPlayerEvents(playerIds, EVENTS_PER_PLAYER);
+      console.log(`Fetching events for ${config.trackedPlayers.length} tracked player(s) in guild ${guildId}`);
+      playerEvents = await batchFetchPlayerEvents(config.trackedPlayers, EVENTS_PER_PLAYER);
     }
     
     // Fetch events for tracked guilds
     let guildEvents = [];
     if (config.trackedGuilds.length > 0) {
-      const albionGuildIds = config.trackedGuilds.map(g => g.id);
-      console.log(`Fetching events for ${albionGuildIds.length} tracked guild(s) in guild ${guildId}`);
-      guildEvents = await batchFetchGuildEvents(albionGuildIds, EVENTS_PER_GUILD);
+      console.log(`Fetching events for ${config.trackedGuilds.length} tracked guild(s) in guild ${guildId}`);
+      guildEvents = await batchFetchGuildEvents(config.trackedGuilds, EVENTS_PER_GUILD);
     }
     
     // Combine and deduplicate events
