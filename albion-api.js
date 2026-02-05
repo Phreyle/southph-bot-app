@@ -198,9 +198,14 @@ export async function getPlayerKills(playerId, limit = 50, apiBaseUrl = null) {
   try {
     const baseUrl = apiBaseUrl || API_BASE_URL;
     const url = `${baseUrl}/players/${playerId}/kills?limit=${limit}`;
+    console.log(`[API] Fetching player kills: ${url}`);
     const data = await rateLimitedRequest(url);
     return data || [];
   } catch (error) {
+    if (error.response?.status === 404) {
+      console.warn(`Player ${playerId} not found or has no kills (404)`);
+      return [];
+    }
     console.error(`Error fetching kills for player ${playerId}:`, error.message);
     return [];
   }
@@ -217,9 +222,14 @@ export async function getPlayerDeaths(playerId, limit = 50, apiBaseUrl = null) {
   try {
     const baseUrl = apiBaseUrl || API_BASE_URL;
     const url = `${baseUrl}/players/${playerId}/deaths?limit=${limit}`;
+    console.log(`[API] Fetching player deaths: ${url}`);
     const data = await rateLimitedRequest(url);
     return data || [];
   } catch (error) {
+    if (error.response?.status === 404) {
+      console.warn(`Player ${playerId} not found or has no deaths (404)`);
+      return [];
+    }
     console.error(`Error fetching deaths for player ${playerId}:`, error.message);
     return [];
   }
@@ -236,9 +246,14 @@ export async function getGuildEvents(guildId, limit = 50, apiBaseUrl = null) {
   try {
     const baseUrl = apiBaseUrl || API_BASE_URL;
     const url = `${baseUrl}/guilds/${guildId}/kills?limit=${limit}`;
+    console.log(`[API] Fetching guild events: ${url}`);
     const data = await rateLimitedRequest(url);
     return data || [];
   } catch (error) {
+    if (error.response?.status === 404) {
+      console.warn(`Guild ${guildId} not found or has no accessible data (404)`);
+      return [];
+    }
     console.error(`Error fetching guild events for ${guildId}:`, error.message);
     return [];
   }

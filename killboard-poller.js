@@ -139,6 +139,9 @@ async function pollGuild(guildId) {
     let playerEvents = [];
     if (config.trackedPlayers.length > 0) {
       console.log(`Fetching events for ${config.trackedPlayers.length} tracked player(s) in guild ${guildId}`);
+      config.trackedPlayers.forEach(p => {
+        console.log(`  - Player: ${p.name} (ID: ${p.id}, Region: ${p.region || 'Unknown'})`);
+      });
       playerEvents = await batchFetchPlayerEvents(config.trackedPlayers, EVENTS_PER_PLAYER);
     }
     
@@ -146,6 +149,9 @@ async function pollGuild(guildId) {
     let guildEvents = [];
     if (config.trackedGuilds.length > 0) {
       console.log(`Fetching events for ${config.trackedGuilds.length} tracked guild(s) in guild ${guildId}`);
+      config.trackedGuilds.forEach(g => {
+        console.log(`  - Guild: ${g.name} (ID: ${g.id}, Region: ${g.region || 'Unknown'})`);
+      });
       guildEvents = await batchFetchGuildEvents(config.trackedGuilds, EVENTS_PER_GUILD);
     }
     
