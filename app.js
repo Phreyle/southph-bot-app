@@ -3,6 +3,7 @@ import { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits } from 'di
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 import {InteractionType,InteractionResponseType,verifyKeyMiddleware,} from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser,clearAll,CURRENCY } from './bank.js';
@@ -1284,6 +1285,127 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           embeds: [embed.toJSON()]
         },
       });
+    }
+
+    // "/info" command - Search for Albion Online player across all regions
+    if (name === 'info') {
+      const playerName = data.options[0].value;
+
+      // Define the three regions
+      const regions = [
+        { name: 'Americas', baseUrl: 'https://gameinfo.albiononline.com/api/gameinfo' },
+        { name: 'Europe', baseUrl: 'https://gameinfo-ams.albiononline.com/api/gameinfo' },
+        { name: 'Asia', baseUrl: 'https://gameinfo-sgp.albiononline.com/api/gameinfo' }
+      ];
+
+      try {
+        // Search for player across all regions
+        const searchPromises = regions.map(async (region) => {
+          try {
+            const searchResponse = await axios.get(`${region.baseUrl}/search?q=${encodeURIComponent(playerName)}`, {
+              timeout: 5000
+            });
+
+            const players = searchResponse.data.players || [];
+            if (players.length === 0) {
+              return null;
+            }
+
+            // Find exact match (case-insensitive)
+            const exactMatch = players.find(p => p.Name.toLowerCase() === playerName.toLowerCase());
+            const playerId = exactMatch ? exactMatch.Id : players[0].Id;
+
+            // Fetch detailed player info
+            const playerResponse = await axios.get(`${region.baseUrl}/players/${playerId}`, {
+              timeout: 5000
+            });
+
+            return {
+              region: region.name,
+              data: playerResponse.data
+            };
+          } catch (error) {
+            // If player not found or error in this region, return null
+            return null;
+          }
+        });
+
+        const results = await Promise.all(searchPromises);
+        const foundPlayers = results.filter(result => result !== null);
+
+        if (foundPlayers.length === 0) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Player **${playerName}** not found in any region.`,
+              flags: 64 // EPHEMERAL
+            },
+          });
+        }
+
+        // Build embed with player info from all regions
+        const embed = new EmbedBuilder()
+          .setColor(0xF0B900) // Albion gold color
+          .setTitle(`🔍 Player Search: ${playerName}`)
+          .setTimestamp();
+
+        foundPlayers.forEach((playerInfo) => {
+          const player = playerInfo.data;
+          const region = playerInfo.region;
+
+          let fieldValue = `**Player ID:** ${player.Id}\n`;
+          
+          if (player.GuildId && player.GuildName) {
+            fieldValue += `**Guild:** ${player.GuildName}\n`;
+          } else {
+            fieldValue += `**Guild:** None\n`;
+          }
+
+          if (player.AllianceId && player.AllianceName) {
+            fieldValue += `**Alliance:** ${player.AllianceName}\n`;
+          } else {
+            fieldValue += `**Alliance:** None\n`;
+          }
+
+          if (player.KillFame !== undefined) {
+            fieldValue += `**Kill Fame:** ${player.KillFame.toLocaleString()}\n`;
+          }
+
+          if (player.DeathFame !== undefined) {
+            fieldValue += `**Death Fame:** ${player.DeathFame.toLocaleString()}\n`;
+          }
+
+          if (player.LifetimeStatistics) {
+            const stats = player.LifetimeStatistics;
+            if (stats.PvE && stats.PvE.Total) {
+              fieldValue += `**PvE Fame:** ${stats.PvE.Total.toLocaleString()}\n`;
+            }
+          }
+
+          embed.addFields({
+            name: `📍 ${region}`,
+            value: fieldValue,
+            inline: false
+          });
+        });
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()]
+          },
+        });
+
+      } catch (error) {
+        console.error('Error fetching player info:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ An error occurred while fetching player information. Please try again later.',
+            flags: 64 // EPHEMERAL
+          },
+        });
+      }
     }
 
     // "/content" command - Manage content callouts

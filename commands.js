@@ -10,6 +10,23 @@ const UTC_COMMAND = {
   contexts: [0, 1, 2],
 };
 
+// Info command for Albion Online player lookup
+const INFO_COMMAND = {
+  name: 'info',
+  description: 'Search for an Albion Online player across all regions',
+  options: [
+    {
+      type: 3, // STRING
+      name: 'playername',
+      description: 'The player name to search for',
+      required: true,
+    },
+  ],
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
+
 // Help command
 const HELP_COMMAND = {
   name: 'help',
@@ -345,6 +362,6 @@ const PERMS_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [UTC_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND];
+const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
