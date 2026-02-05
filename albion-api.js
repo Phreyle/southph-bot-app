@@ -369,9 +369,7 @@ export async function batchFetchPlayerEvents(players, eventsPerPlayer = 10) {
       // Small delay between players to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
-      console.error(`Error fetching events for player ${player.id || player
-    } catch (error) {
-      console.error(`Error fetching events for player ${playerId}:`, error.message);
+      console.error(`Error fetching events for player ${player.id || player}`);
     }
   }
   
@@ -382,7 +380,10 @@ export async function batchFetchPlayerEvents(players, eventsPerPlayer = 10) {
   
   return uniqueEvents.sort((a, b) => b.EventId - a.EventId);
 }
-object>} guilds - Array of guild objects with { id, apiBaseUrl }
+
+/**
+ * Batch fetch events for multiple guilds
+ * @param {Array<object>} guilds - Array of guild objects with { id, apiBaseUrl }
  * @param {number} eventsPerGuild - Number of events to fetch per guild
  * @returns {Promise<Array>} Combined array of all events
  */
@@ -400,10 +401,7 @@ export async function batchFetchGuildEvents(guilds, eventsPerGuild = 20) {
       // Small delay between guilds
       await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
-      console.error(`Error fetching events for guild ${guild.id || guil
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } catch (error) {
-      console.error(`Error fetching events for guild ${guildId}:`, error.message);
+      console.error(`Error fetching events for guild ${guild.id || guild}:`, error.message);
     }
   }
   
