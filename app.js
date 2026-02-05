@@ -2445,7 +2445,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             const player = await searchPlayer(playerName);
 
             if (!player) {
-              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
                 method: 'PATCH',
                 body: {
                   content: `❌ Player **${playerName}** not found in Albion Online.`
@@ -2458,7 +2458,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             const added = addTrackedPlayer(guildId, player.Name, player.Id);
 
             if (!added) {
-              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
                 method: 'PATCH',
                 body: {
                   content: `❌ Player **${player.Name}** is already being tracked.`
@@ -2467,7 +2467,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               return;
             }
 
-            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+            await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
               method: 'PATCH',
               body: {
                 content: `✅ Now tracking player **${player.Name}** (ID: ${player.Id})\n` +
@@ -2476,12 +2476,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             });
           } catch (error) {
             console.error('Error tracking player:', error);
-            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+            await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
               method: 'PATCH',
               body: {
-                content: `❌ An error occurred while searching for player **${playerName}**.`
+                content: `❌ An error occurred while searching for player **${playerName}**. Please try again.`
               }
-            });
+            }).catch(err => console.error('Failed to send error response:', err));
           }
           return;
         }
@@ -2501,7 +2501,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             const guild = await searchGuild(guildName);
 
             if (!guild) {
-              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
                 method: 'PATCH',
                 body: {
                   content: `❌ Guild **${guildName}** not found in Albion Online.`
@@ -2514,7 +2514,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             const added = addTrackedGuild(guildId, guild.Name, guild.Id);
 
             if (!added) {
-              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
                 method: 'PATCH',
                 body: {
                   content: `❌ Guild **${guild.Name}** is already being tracked.`
@@ -2523,7 +2523,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               return;
             }
 
-            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+            await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
               method: 'PATCH',
               body: {
                 content: `✅ Now tracking guild **${guild.Name}** (ID: ${guild.Id})\n` +
@@ -2532,12 +2532,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             });
           } catch (error) {
             console.error('Error tracking guild:', error);
-            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+            await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
               method: 'PATCH',
               body: {
-                content: `❌ An error occurred while searching for guild **${guildName}**.`
+                content: `❌ An error occurred while searching for guild **${guildName}**. Please try again.`
               }
-            });
+            }).catch(err => console.error('Failed to send error response:', err));
           }
           return;
         }

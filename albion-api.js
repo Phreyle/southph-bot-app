@@ -41,7 +41,7 @@ async function rateLimitedRequest(url, options = {}) {
   try {
     RATE_LIMIT.lastRequestTime = Date.now();
     const response = await axios.get(url, {
-      timeout: 10000,
+      timeout: 15000, // Increased to 15 seconds
       ...options
     });
     return response.data;
@@ -50,7 +50,7 @@ async function rateLimitedRequest(url, options = {}) {
       console.error('Rate limit exceeded. Waiting 60 seconds...');
       await new Promise(resolve => setTimeout(resolve, 60000));
       // Retry once after rate limit
-      return await axios.get(url, { timeout: 10000, ...options }).then(r => r.data);
+      return await axios.get(url, { timeout: 15000, ...options }).then(r => r.data);
     }
     throw error;
   }
