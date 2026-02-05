@@ -7,6 +7,16 @@ import axios from 'axios';
 import {InteractionType,InteractionResponseType,verifyKeyMiddleware,} from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser,clearAll,CURRENCY } from './bank.js';
+import {
+  loadKillboardConfig,
+  setKillboardChannel,
+  addTrackedPlayer,
+  removeTrackedPlayer,
+  addTrackedGuild,
+  removeTrackedGuild
+} from './killboard-config.js';
+import { searchPlayer, searchGuild } from './albion-api.js';
+import { initializePoller, getPollerStatus } from './killboard-poller.js';
 
 // Data directory from environment variable (default: /home/container/data)
 const DATA_DIR = process.env.DATA_DIR || '/home/container/data';
@@ -1232,6 +1242,15 @@ client.on('messageCreate', async (message) => {
 // Login to Discord
 client.login(process.env.DISCORD_TOKEN);
 
+// Initialize killboard poller once client is ready
+client.once('ready', () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log('🔄 Initializing killboard poller...');
+  
+  // Start killboard poller with 30-second interval
+  initializePoller(client, 30000);
+});
+
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
  * Parse request body and verifies incoming requests using discord-interactions package
@@ -2367,6 +2386,287 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
             content: `✅ Removed <@&${roleId}> from ${displayName} permissions.`,
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // "/killboard" command - Albion Online kill/death tracking
+    if (name === 'killboard') {
+      const guildId = req.body.guild_id;
+      
+      if (!guildId) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ This command can only be used in a server.',
+            flags: 64
+          },
+        });
+      }
+
+      const subcommandGroup = data.options?.[0];
+      const subcommandName = subcommandGroup?.name;
+
+      // /killboard set-channel
+      if (subcommandName === 'set-channel') {
+        const channel = subcommandGroup.options[0];
+        const channelId = channel.value;
+
+        setKillboardChannel(guildId, channelId);
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `✅ Killboard channel set to <#${channelId}>`,
+            flags: 64
+          },
+        });
+      }
+
+      // /killboard track
+      if (subcommandName === 'track') {
+        const trackType = subcommandGroup.options[0];
+        const trackTypeName = trackType.name; // 'player' or 'guild'
+
+        // Track player
+        if (trackTypeName === 'player') {
+          const playerName = trackType.options[0].value;
+
+          // Defer response since API lookup may take time
+          await res.send({
+            type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { flags: 64 }
+          });
+
+          try {
+            // Search for player in Albion API
+            const player = await searchPlayer(playerName);
+
+            if (!player) {
+              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+                method: 'PATCH',
+                body: {
+                  content: `❌ Player **${playerName}** not found in Albion Online.`
+                }
+              });
+              return;
+            }
+
+            // Add player to tracking
+            const added = addTrackedPlayer(guildId, player.Name, player.Id);
+
+            if (!added) {
+              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+                method: 'PATCH',
+                body: {
+                  content: `❌ Player **${player.Name}** is already being tracked.`
+                }
+              });
+              return;
+            }
+
+            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              method: 'PATCH',
+              body: {
+                content: `✅ Now tracking player **${player.Name}** (ID: ${player.Id})\n` +
+                        `Kill/death events will be posted to your configured channel.`
+              }
+            });
+          } catch (error) {
+            console.error('Error tracking player:', error);
+            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              method: 'PATCH',
+              body: {
+                content: `❌ An error occurred while searching for player **${playerName}**.`
+              }
+            });
+          }
+          return;
+        }
+
+        // Track guild
+        if (trackTypeName === 'guild') {
+          const guildName = trackType.options[0].value;
+
+          // Defer response
+          await res.send({
+            type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { flags: 64 }
+          });
+
+          try {
+            // Search for guild in Albion API
+            const guild = await searchGuild(guildName);
+
+            if (!guild) {
+              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+                method: 'PATCH',
+                body: {
+                  content: `❌ Guild **${guildName}** not found in Albion Online.`
+                }
+              });
+              return;
+            }
+
+            // Add guild to tracking
+            const added = addTrackedGuild(guildId, guild.Name, guild.Id);
+
+            if (!added) {
+              await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+                method: 'PATCH',
+                body: {
+                  content: `❌ Guild **${guild.Name}** is already being tracked.`
+                }
+              });
+              return;
+            }
+
+            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              method: 'PATCH',
+              body: {
+                content: `✅ Now tracking guild **${guild.Name}** (ID: ${guild.Id})\n` +
+                        `Kill/death events involving this guild will be posted to your configured channel.`
+              }
+            });
+          } catch (error) {
+            console.error('Error tracking guild:', error);
+            await DiscordRequest(`/interactions/${id}/${req.body.token}/callback`, {
+              method: 'PATCH',
+              body: {
+                content: `❌ An error occurred while searching for guild **${guildName}**.`
+              }
+            });
+          }
+          return;
+        }
+      }
+
+      // /killboard untrack
+      if (subcommandName === 'untrack') {
+        const untrackType = subcommandGroup.options[0];
+        const untrackTypeName = untrackType.name; // 'player' or 'guild'
+
+        // Untrack player
+        if (untrackTypeName === 'player') {
+          const playerName = untrackType.options[0].value;
+          const removed = removeTrackedPlayer(guildId, playerName);
+
+          if (!removed) {
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: {
+                content: `❌ Player **${playerName}** is not being tracked.`,
+                flags: 64
+              },
+            });
+          }
+
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `✅ Stopped tracking player **${playerName}**.`,
+              flags: 64
+            },
+          });
+        }
+
+        // Untrack guild
+        if (untrackTypeName === 'guild') {
+          const guildName = untrackType.options[0].value;
+          const removed = removeTrackedGuild(guildId, guildName);
+
+          if (!removed) {
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: {
+                content: `❌ Guild **${guildName}** is not being tracked.`,
+                flags: 64
+              },
+            });
+          }
+
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `✅ Stopped tracking guild **${guildName}**.`,
+              flags: 64
+            },
+          });
+        }
+      }
+
+      // /killboard list
+      if (subcommandName === 'list') {
+        const config = loadKillboardConfig(guildId);
+
+        const embed = new EmbedBuilder()
+          .setColor(0xF0B900)
+          .setTitle('📊 Killboard Tracking Status')
+          .setTimestamp();
+
+        if (!config.channelId) {
+          embed.setDescription('❌ No channel configured. Use `/killboard set-channel` first.');
+        } else {
+          embed.setDescription(`**Channel:** <#${config.channelId}>`);
+        }
+
+        // Add tracked players field
+        if (config.trackedPlayers.length > 0) {
+          const playerList = config.trackedPlayers
+            .map(p => `• ${p.name}`)
+            .join('\n');
+          embed.addFields({ name: '👤 Tracked Players', value: playerList, inline: false });
+        } else {
+          embed.addFields({ name: '👤 Tracked Players', value: 'None', inline: false });
+        }
+
+        // Add tracked guilds field
+        if (config.trackedGuilds.length > 0) {
+          const guildList = config.trackedGuilds
+            .map(g => `• ${g.name}`)
+            .join('\n');
+          embed.addFields({ name: '🏰 Tracked Guilds', value: guildList, inline: false });
+        } else {
+          embed.addFields({ name: '🏰 Tracked Guilds', value: 'None', inline: false });
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          },
+        });
+      }
+
+      // /killboard status
+      if (subcommandName === 'status') {
+        const status = getPollerStatus();
+        const config = loadKillboardConfig(guildId);
+
+        const embed = new EmbedBuilder()
+          .setColor(status.isRunning ? 0x2ecc71 : 0xe74c3c)
+          .setTitle('🔄 Killboard Poller Status')
+          .addFields(
+            { name: 'Status', value: status.isRunning ? '✅ Running' : '❌ Stopped', inline: true },
+            { name: 'Currently Polling', value: status.isPolling ? 'Yes' : 'No', inline: true },
+            { name: 'Poll Interval', value: `${status.interval / 1000}s`, inline: true },
+            { name: 'Total Configured Guilds', value: `${status.configuredGuilds}`, inline: true },
+            { name: 'Tracked Players (This Server)', value: `${config.trackedPlayers.length}`, inline: true },
+            { name: 'Tracked Guilds (This Server)', value: `${config.trackedGuilds.length}`, inline: true }
+          )
+          .setTimestamp();
+
+        if (config.lastPollTimestamp) {
+          embed.setFooter({ text: `Last poll: ${new Date(config.lastPollTimestamp).toLocaleString()}` });
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
             flags: 64
           },
         });
