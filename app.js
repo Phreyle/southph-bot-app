@@ -2432,7 +2432,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         // Track player
         if (trackTypeName === 'player') {
-          const playerName = trackType.options[0].value;
+          const region = trackType.options[0].value; // 'americas', 'europe', or 'asia'
+          const playerName = trackType.options[1].value;
 
           // Defer response since API lookup may take time
           await res.send({
@@ -2441,8 +2442,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
 
           try {
-            // Search for player in Albion API
-            const player = await searchPlayer(playerName);
+            // Search for player in specified region
+            const player = await searchPlayer(playerName, region);
 
             if (!player) {
               await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -2488,7 +2489,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         // Track guild
         if (trackTypeName === 'guild') {
-          const guildName = trackType.options[0].value;
+          const region = trackType.options[0].value; // 'americas', 'europe', or 'asia'
+          const guildName = trackType.options[1].value;
 
           // Defer response
           await res.send({
@@ -2497,8 +2499,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           });
 
           try {
-            // Search for guild in Albion API
-            const guild = await searchGuild(guildName);
+            // Search for guild in specified region
+            const guild = await searchGuild(guildName, region);
 
             if (!guild) {
               await DiscordRequest(`/webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {

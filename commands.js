@@ -392,6 +392,17 @@ const KILLBOARD_COMMAND = {
           options: [
             {
               type: 3, // STRING
+              name: 'region',
+              description: 'Albion Online region',
+              required: true,
+              choices: [
+                { name: 'Americas', value: 'americas' },
+                { name: 'Europe', value: 'europe' },
+                { name: 'Asia', value: 'asia' },
+              ],
+            },
+            {
+              type: 3, // STRING
               name: 'playername',
               description: 'The Albion Online player name to track',
               required: true,
@@ -403,6 +414,17 @@ const KILLBOARD_COMMAND = {
           name: 'guild',
           description: 'Track all kills/deaths associated with a guild',
           options: [
+            {
+              type: 3, // STRING
+              name: 'region',
+              description: 'Albion Online region',
+              required: true,
+              choices: [
+                { name: 'Americas', value: 'americas' },
+                { name: 'Europe', value: 'europe' },
+                { name: 'Asia', value: 'asia' },
+              ],
+            },
             {
               type: 3, // STRING
               name: 'guildname',

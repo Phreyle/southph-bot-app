@@ -65,14 +65,25 @@ async function rateLimitedRequest(url, options = {}) {
 }
 
 /**
- * Search for a player by name across all regions
+ * Search for a player by name across all regions or a specific region
  * @param {string} playerName - Player name to search
+ * @param {string} regionFilter - Optional region to search ('americas', 'europe', 'asia')
  * @returns {Promise<object|null>} Player object with id, name, region, etc., or null if not found
  */
-export async function searchPlayer(playerName) {
+export async function searchPlayer(playerName, regionFilter = null) {
   try {
-    // Search across all regions
-    for (const region of REGIONS) {
+    // Filter regions if specified
+    const regionsToSearch = regionFilter 
+      ? REGIONS.filter(r => r.name.toLowerCase() === regionFilter.toLowerCase())
+      : REGIONS;
+    
+    if (regionsToSearch.length === 0) {
+      console.error(`Invalid region filter: ${regionFilter}`);
+      return null;
+    }
+    
+    // Search across filtered regions
+    for (const region of regionsToSearch) {
       try {
         const url = `${region.baseUrl}/search?q=${encodeURIComponent(playerName)}`;
         const data = await rateLimitedRequest(url);
@@ -107,14 +118,25 @@ export async function searchPlayer(playerName) {
 }
 
 /**
- * Search for a guild by name across all regions
+ * Search for a guild by name across all regions or a specific region
  * @param {string} guildName - Guild name to search
+ * @param {string} regionFilter - Optional region to search ('americas', 'europe', 'asia')
  * @returns {Promise<object|null>} Guild object with Id, Name, region, etc., or null if not found
  */
-export async function searchGuild(guildName) {
+export async function searchGuild(guildName, regionFilter = null) {
   try {
-    // Search across all regions
-    for (const region of REGIONS) {
+    // Filter regions if specified
+    const regionsToSearch = regionFilter 
+      ? REGIONS.filter(r => r.name.toLowerCase() === regionFilter.toLowerCase())
+      : REGIONS;
+    
+    if (regionsToSearch.length === 0) {
+      console.error(`Invalid region filter: ${regionFilter}`);
+      return null;
+    }
+    
+    // Search across filtered regions
+    for (const region of regionsToSearch) {
       try {
         const url = `${region.baseUrl}/search?q=${encodeURIComponent(guildName)}`;
         const data = await rateLimitedRequest(url);
