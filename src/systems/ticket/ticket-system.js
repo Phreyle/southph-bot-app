@@ -102,10 +102,18 @@ export async function handleApplyTicket(interaction) {
     const channelName = `ticket-${ticketId}`;
     const guild = interaction.guild;
 
-    // Get category
-    const category = panel.ticketCategoryId 
-      ? guild.channels.cache.get(panel.ticketCategoryId)
-      : null;
+    // Get category and validate it's actually a category
+    let category = null;
+    if (panel.ticketCategoryId) {
+      const categoryChannel = guild.channels.cache.get(panel.ticketCategoryId);
+      if (categoryChannel && categoryChannel.type === ChannelType.GuildCategory) {
+        category = categoryChannel;
+      } else {
+        return interaction.editReply({
+          content: '❌ The configured ticket category is invalid. Please contact an administrator to fix the ticket setup.'
+        });
+      }
+    }
 
     // Create channel with permissions
     const channel = await guild.channels.create({

@@ -118,22 +118,22 @@ export async function listTicketPanels(message) {
       .setTimestamp();
 
     for (const panel of panels) {
-      const fields = [
-        `Category: <#${panel.ticketCategoryId}>`,
-        `Ping Role: <@&${panel.pingRoleId}>`,
-        `Approve Role: <@&${panel.approveRoleId}>`,
-        `Transcript: <#${panel.transcriptChannelId}>`,
-        `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
-        `Nickname: ${panel.nicknameFormat}`
+      const fieldLines = [
+        `**Category:** <#${panel.ticketCategoryId}>`,
+        `**Ping Role:** <@&${panel.pingRoleId}>`,
+        `**Approve Role:** <@&${panel.approveRoleId}>`,
+        `**Transcript:** <#${panel.transcriptChannelId}>`,
+        `**Staff Roles:** ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
+        `**Nickname:** ${panel.nicknameFormat}`
       ];
 
       if (panel.requiredAlbionGuild && panel.albionRegion) {
-        fields.push(`🏰 Albion Guild: **${panel.requiredAlbionGuild}** (${panel.albionRegion})`);
+        fieldLines.push(`**🏰 Albion Guild:** ${panel.requiredAlbionGuild} (${panel.albionRegion})`);
       }
 
       embed.addFields({
         name: `${panel.ticketTypeName} (${panel.panelId})`,
-        value: fields.join('\n'),
+        value: fieldLines.join('\n'),
         inline: false
       });
     }
