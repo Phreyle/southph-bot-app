@@ -11,6 +11,7 @@ import {
   ChannelType,
   PermissionFlagsBits 
 } from 'discord.js';
+import axios from 'axios';
 import {
   loadTickets,
   saveTickets,
@@ -285,6 +286,67 @@ export async function handleClaimTicket(interaction) {
 }
 
 /**
+ * Check Albion Online guild membership
+ */
+async function checkAlbionGuild(playerName, requiredGuild, region) {
+  try {
+    const regionUrls = {
+      'Americas': 'https://gameinfo.albiononline.com/api/gameinfo',
+      'Europe': 'https://gameinfo-ams.albiononline.com/api/gameinfo',
+      'Asia': 'https://gameinfo-sgp.albiononline.com/api/gameinfo'
+    };
+
+    const baseUrl = regionUrls[region];
+    if (!baseUrl) {
+      return { success: false, error: 'Invalid region specified' };
+    }
+
+    // Search for player
+    const searchResponse = await axios.get(`${baseUrl}/search?q=${encodeURIComponent(playerName)}`, {
+      timeout: 5000
+    });
+
+    const players = searchResponse.data.players || [];
+    if (players.length === 0) {
+      return { success: false, error: `Player "${playerName}" not found in ${region}` };
+    }
+
+    // Find exact match (case-insensitive)
+    const exactMatch = players.find(p => p.Name.toLowerCase() === playerName.toLowerCase());
+    const playerId = exactMatch ? exactMatch.Id : players[0].Id;
+
+    // Fetch detailed player info
+    const playerResponse = await axios.get(`${baseUrl}/players/${playerId}`, {
+      timeout: 5000
+    });
+
+    const playerData = playerResponse.data;
+
+    // Check guild membership
+    if (!playerData.GuildName) {
+      return { success: false, error: `Player "${playerName}" is not in any guild` };
+    }
+
+    if (playerData.GuildName.toLowerCase() !== requiredGuild.toLowerCase()) {
+      return { 
+        success: false, 
+        error: `Player is in guild "${playerData.GuildName}" but needs to be in "${requiredGuild}"` 
+      };
+    }
+
+    return { 
+      success: true, 
+      guildName: playerData.GuildName,
+      playerName: playerData.Name 
+    };
+
+  } catch (error) {
+    console.error('Error checking Albion guild:', error);
+    return { success: false, error: 'Failed to verify guild membership with Albion API' };
+  }
+}
+
+/**
  * Handle approve ticket button
  */
 export async function handleApproveTicket(interaction) {
@@ -321,11 +383,29 @@ export async function handleApproveTicket(interaction) {
     await interaction.deferReply();
 
     // Get ticket author
-    const ticketAuthor = await interaction.guild.members.fetch(ticket.authorId).catch(() => null);
+    const guild = interaction.guild;
+    const ticketAuthor = await guild.members.fetch(ticket.authorId).catch(() => null);
     if (!ticketAuthor) {
       return interaction.editReply({
         content: '❌ Ticket author not found in the server.',
       });
+    }
+
+    // Check Albion guild membership if configured
+    if (panel.requiredAlbionGuild && panel.albionRegion) {
+      const playerName = ticketAuthor.user.username;
+      
+      const guildCheck = await checkAlbionGuild(playerName, panel.requiredAlbionGuild, panel.albionRegion);
+      
+      if (!guildCheck.success) {
+        return interaction.editReply({
+          content: `❌ Guild verification failed: ${guildCheck.error}\n\n` +
+                   `Required: **${panel.requiredAlbionGuild}** in **${panel.albionRegion}** region\n` +
+                   `Please ensure your Discord username matches your Albion character name.`,
+        });
+      }
+
+      console.log(`✅ Guild verified: ${guildCheck.playerName} is in ${guildCheck.guildName}`);
     }
 
     // Assign role
@@ -341,7 +421,7 @@ export async function handleApproveTicket(interaction) {
     // Change nickname
     if (panel.nicknameFormat) {
       try {
-        const newNickname = panel.nicknameFormat.replace('{username}', interaction.user.username);
+        const newNickname = panel.nicknameFormat.replace('{username}', ticketAuthor.user.username);
         await ticketAuthor.setNickname(newNickname);
       } catch (error) {
         console.error('Failed to change nickname:', error);
@@ -363,7 +443,7 @@ export async function handleApproveTicket(interaction) {
 
     // Send "Ticket Closed" embed to transcript channel
     if (panel.transcriptChannelId) {
-      const transcriptChannel = interaction.guild.channels.cache.get(panel.transcriptChannelId);
+      const transcriptChannel = guild.channels.cache.get(panel.transcriptChannelId);
       if (transcriptChannel) {
         const closedEmbed = new EmbedBuilder()
           .setTitle('🎫 Ticket Closed')
@@ -394,7 +474,10 @@ export async function handleApproveTicket(interaction) {
     // Delete channel after delay
     setTimeout(async () => {
       try {
-        await interaction.channel.delete();
+        const channel = guild.channels.cache.get(channelId);
+        if (channel) {
+          await channel.delete();
+        }
       } catch (error) {
         console.error('Failed to delete channel:', error);
       }

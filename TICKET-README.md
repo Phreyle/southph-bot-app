@@ -31,7 +31,7 @@ All data is stored under `/data/guilds/{guildId}/`:
 Use the `!ticketsetup` command to create a panel configuration:
 
 ```
-!ticketsetup apply "Apply" <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat]
+!ticketsetup apply "Apply" <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat] [albionGuild] [albionRegion]
 ```
 
 **Parameters:**
@@ -43,10 +43,12 @@ Use the `!ticketsetup` command to create a panel configuration:
 - `approveRoleId`: Role to assign on approval
 - `transcriptChannelId`: Channel for ticket open/close notifications
 - `nicknameFormat`: Optional - Format for nickname (default: "SOUTH | {username}")
+- `albionGuild`: Optional - Required Albion Online guild name (e.g., "South PH")
+- `albionRegion`: Optional - Albion region: Americas, Europe, or Asia
 
 **Example:**
 ```
-!ticketsetup apply "Apply" 123456789012345678 987654321098765432 111222333444555666,777888999000111222 333444555666777888 444555666777888999 "SOUTH | {username}"
+!ticketsetup apply "Apply" 123456789012345678 987654321098765432 111222333444555666,777888999000111222 333444555666777888 444555666777888999 "SOUTH | {username}" "South PH" "Asia"
 ```
 
 ### 2. Create Apply Panel Button
@@ -106,15 +108,20 @@ All messages in ticket channels are automatically logged to transcripts with:
 
 When staff clicks "Approve":
 
-1. Assigns the `approveRoleId` to the ticket author
-2. Changes nickname using `nicknameFormat`
-3. Saves transcript
-4. Sends "Ticket Closed" embed to transcript channel with:
+1. **Albion Guild Check** (if configured):
+   - Checks if user's Discord username matches an Albion character
+   - Verifies character is in the required guild
+   - Verifies character is in the correct region
+   - Blocks approval if check fails
+2. Assigns the `approveRoleId` to the ticket author
+3. Changes nickname using `nicknameFormat`
+4. Saves transcript
+5. Sends "Ticket Closed" embed to transcript channel with:
    - Ticket information
    - Open/close dates
    - Close reason
    - Staff message count
-5. Deletes the ticket channel after 5 seconds
+6. Deletes the ticket channel after 5 seconds
 
 ### Close Process
 
@@ -169,7 +176,9 @@ When closing without approval:
   "staffRoleIds": ["111222333444555666", "777888999000111222"],
   "approveRoleId": "333444555666777888",
   "nicknameFormat": "SOUTH | {username}",
-  "transcriptChannelId": "444555666777888999"
+  "transcriptChannelId": "444555666777888999",
+  "requiredAlbionGuild": "South PH",
+  "albionRegion": "Asia"
 }
 ```
 

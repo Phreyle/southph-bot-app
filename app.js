@@ -2493,6 +2493,141 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   if (type === InteractionType.MESSAGE_COMPONENT) {
     const componentId = data.custom_id;
 
+    // Ticket system button handlers
+    if (componentId === 'apply_ticket') {
+      console.log('🎫 Apply ticket button clicked');
+      // Create interaction object compatible with Discord.js
+      const interaction = {
+        customId: componentId,
+        guildId: req.body.guild_id,
+        user: req.body.member?.user || req.body.user,
+        member: req.body.member,
+        channelId: req.body.channel_id,
+        guild: client.guilds.cache.get(req.body.guild_id),
+        deferReply: async (options) => {
+          return res.send({
+            type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { flags: options?.ephemeral ? 64 : 0 }
+          });
+        },
+        editReply: async (options) => {
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: options.content,
+              embeds: options.embeds?.map(e => e.toJSON?.() || e),
+              flags: options.ephemeral ? 64 : 0
+            }
+          });
+        },
+        reply: async (options) => {
+          if (!res.headersSent) {
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: {
+                content: options.content,
+                embeds: options.embeds?.map(e => e.toJSON?.() || e),
+                flags: options.ephemeral ? 64 : 0
+              }
+            });
+          }
+        }
+      };
+
+      await handleApplyTicket(interaction);
+      return;
+    }
+
+    if (componentId === 'ticket_claim') {
+      console.log('✋ Claim ticket button clicked');
+      const interaction = {
+        customId: componentId,
+        guildId: req.body.guild_id,
+        user: req.body.member?.user || req.body.user,
+        member: req.body.member,
+        channelId: req.body.channel_id,
+        guild: client.guilds.cache.get(req.body.guild_id),
+        reply: async (options) => {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: options.content,
+              embeds: options.embeds?.map(e => e.toJSON?.() || e),
+              flags: options.ephemeral ? 64 : 0
+            }
+          });
+        }
+      };
+
+      await handleClaimTicket(interaction);
+      return;
+    }
+
+    if (componentId === 'ticket_approve') {
+      console.log('✅ Approve ticket button clicked');
+      const interaction = {
+        customId: componentId,
+        guildId: req.body.guild_id,
+        user: req.body.member?.user || req.body.user,
+        member: req.body.member,
+        channelId: req.body.channel_id,
+        guild: client.guilds.cache.get(req.body.guild_id),
+        deferReply: async (options) => {
+          return res.send({
+            type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { flags: options?.ephemeral ? 64 : 0 }
+          });
+        },
+        editReply: async (options) => {
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: options.content,
+              embeds: options.embeds?.map(e => e.toJSON?.() || e),
+              flags: options.ephemeral ? 64 : 0
+            }
+          });
+        },
+        replied: false,
+        deferred: false,
+        channel: null // Will be set by handler if needed
+      };
+
+      await handleApproveTicket(interaction);
+      return;
+    }
+
+    if (componentId === 'ticket_close') {
+      console.log('🔒 Close ticket button clicked');
+      const interaction = {
+        customId: componentId,
+        guildId: req.body.guild_id,
+        user: req.body.member?.user || req.body.user,
+        member: req.body.member,
+        channelId: req.body.channel_id,
+        guild: client.guilds.cache.get(req.body.guild_id),
+        deferReply: async (options) => {
+          return res.send({
+            type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { flags: options?.ephemeral ? 64 : 0 }
+          });
+        },
+        editReply: async (options) => {
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: options.content,
+              embeds: options.embeds?.map(e => e.toJSON?.() || e),
+              flags: options.ephemeral ? 64 : 0
+            }
+          });
+        }
+      };
+
+      await handleCloseTicket(interaction);
+      return;
+    }
+
     // Handle FFROA button clicks (if you have any other button interactions)
     // Add other button handlers here if needed
 

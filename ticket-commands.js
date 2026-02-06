@@ -9,7 +9,7 @@ import { getTicketStats, ticketSystemHealthCheck } from './ticket-utils.js';
 
 /**
  * Setup ticket panel configuration
- * Usage: !ticketsetup <panelId> <ticketType> <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> <nicknameFormat>
+ * Usage: !ticketsetup <panelId> <ticketType> <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> <nicknameFormat> [albionGuild] [albionRegion]
  */
 export async function setupTicketPanel(message, args) {
   // Check permissions
@@ -19,9 +19,10 @@ export async function setupTicketPanel(message, args) {
 
   if (args.length < 7) {
     return message.reply(
-      '❌ Usage: `!ticketsetup <panelId> <ticketType> <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat]`\n' +
-      'Example: `!ticketsetup apply "Apply" 123456 789012 345678,901234 567890 111213 "SOUTH | {username}"`\n' +
-      'Note: staffRoleIds should be comma-separated (no spaces)'
+      '❌ Usage: `!ticketsetup <panelId> <ticketType> <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat] [albionGuild] [albionRegion]`\n' +
+      'Example: `!ticketsetup apply "Apply" 123456 789012 345678,901234 567890 111213 "SOUTH | {username}" "South PH" "Asia"`\n' +
+      'Note: staffRoleIds should be comma-separated (no spaces)\n' +
+      'Albion regions: Americas, Europe, Asia'
     );
   }
 
@@ -32,7 +33,14 @@ export async function setupTicketPanel(message, args) {
   const staffRoleIds = args[4].split(',');
   const approveRoleId = args[5];
   const transcriptChannelId = args[6];
-  const nicknameFormat = args[7] ? args.slice(7).join(' ').replace(/"/g, '') : 'SOUTH | {username}';
+  const nicknameFormat = args[7] ? args[7].replace(/"/g, '') : 'SOUTH | {username}';
+  const requiredAlbionGuild = args[8] ? args[8].replace(/"/g, '') : null;
+  const albionRegion = args[9] ? args[9].replace(/"/g, '') : null;
+
+  // Validate Albion region if provided
+  if (albionRegion && !['Americas', 'Europe', 'Asia'].includes(albionRegion)) {
+    return message.reply('❌ Invalid Albion region. Must be: Americas, Europe, or Asia');
+  }
 
   try {
     const guildId = message.guildId;
@@ -49,7 +57,9 @@ export async function setupTicketPanel(message, args) {
       staffRoleIds,
       approveRoleId,
       nicknameFormat,
-      transcriptChannelId
+      transcriptChannelId,
+      requiredAlbionGuild,
+      albionRegion
     };
 
     if (existingIndex >= 0) {
@@ -74,6 +84,12 @@ export async function setupTicketPanel(message, args) {
       )
       .setColor(0x57F287)
       .setTimestamp();
+
+    if (requiredAlbionGuild && albionRegion) {
+      embed.addFields(
+        { name: '🏰 Albion Guild Check', value: `Required Guild: **${requiredAlbionGuild}**\nRegion: **${albionRegion}**`, inline: false }
+      );
+    }
 
     return message.reply({ embeds: [embed] });
 
@@ -102,16 +118,22 @@ export async function listTicketPanels(message) {
       .setTimestamp();
 
     for (const panel of panels) {
+      const fields = [
+        `Category: <#${panel.ticketCategoryId}>`,
+        `Ping Role: <@&${panel.pingRoleId}>`,
+        `Approve Role: <@&${panel.approveRoleId}>`,
+        `Transcript: <#${panel.transcriptChannelId}>`,
+        `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
+        `Nickname: ${panel.nicknameFormat}`
+      ];
+
+      if (panel.requiredAlbionGuild && panel.albionRegion) {
+        fields.push(`🏰 Albion Guild: **${panel.requiredAlbionGuild}** (${panel.albionRegion})`);
+      }
+
       embed.addFields({
         name: `${panel.ticketTypeName} (${panel.panelId})`,
-        value: [
-          `Category: <#${panel.ticketCategoryId}>`,
-          `Ping Role: <@&${panel.pingRoleId}>`,
-          `Approve Role: <@&${panel.approveRoleId}>`,
-          `Transcript: <#${panel.transcriptChannelId}>`,
-          `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
-          `Nickname: ${panel.nicknameFormat}`
-        ].join('\n'),
+        value: fields.join('\n'),
         inline: false
       });
     }

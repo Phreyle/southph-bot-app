@@ -10,6 +10,8 @@
     ],
     "approveRoleId": "YOUR_APPROVE_ROLE_ID_HERE",
     "nicknameFormat": "SOUTH | {username}",
-    "transcriptChannelId": "YOUR_TRANSCRIPT_CHANNEL_ID_HERE"
+    "transcriptChannelId": "YOUR_TRANSCRIPT_CHANNEL_ID_HERE",
+    "requiredAlbionGuild": "South PH",
+    "albionRegion": "Asia"
   }
 ]
