@@ -84,6 +84,9 @@ export async function handleApplyTicket(interaction) {
       });
     }
 
+    // Get guild first
+    const guild = interaction.guild;
+
     // Check for duplicate open tickets
     const existingTicket = await getOpenTicketByAuthor(guildId, userId, 'apply');
     if (existingTicket) {
@@ -113,7 +116,6 @@ export async function handleApplyTicket(interaction) {
 
     // Create ticket channel
     const channelName = `ticket-${ticketId}`;
-    const guild = interaction.guild;
 
     // Get category and validate it's actually a category
     let category = null;
@@ -214,12 +216,9 @@ export async function handleApplyTicket(interaction) {
     }
 
     // Send header message in ticket channel
-    const defaultMessage = `Thank you for opening a ticket, <@${userId}>.\nStaff will be with you shortly.`;
-    const welcomeText = panel.welcomeMessage ? panel.welcomeMessage.replace(/\\\\n/g, '\n') : defaultMessage;
-    
     const headerEmbed = new EmbedBuilder()
       .setTitle(`${panel.ticketTypeName} Ticket`)
-      .setDescription(welcomeText)
+      .setDescription(`Thank you for opening a ticket, <@${userId}>.\nStaff will be with you shortly.`)
       .setColor(0x5865F2)
       .setTimestamp();
 

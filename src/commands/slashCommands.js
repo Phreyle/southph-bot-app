@@ -987,10 +987,6 @@ export async function handleSlashCommands(req, res, client) {
       const pingRoleId = options.find(o => o.name === 'ping_role').value;
       const staffRoleIds = options.find(o => o.name === 'staff_roles').value.split(',').map(id => id.trim());
       const transcriptChannelId = options.find(o => o.name === 'transcript_channel').value;
-      const nicknameFormat = options.find(o => o.name === 'nickname_format')?.value || 'SOUTH | {username}';
-      const welcomeMessage = options.find(o => o.name === 'welcome_message')?.value || null;
-      const requiredAlbionGuild = options.find(o => o.name === 'albion_guild')?.value || null;
-      const albionRegion = options.find(o => o.name === 'albion_region')?.value || null;
 
       try {
         const panels = await loadPanels(guildId);
@@ -1002,11 +998,7 @@ export async function handleSlashCommands(req, res, client) {
           ticketCategoryId,
           pingRoleId,
           staffRoleIds,
-          nicknameFormat,
-          welcomeMessage,
-          transcriptChannelId,
-          requiredAlbionGuild,
-          albionRegion
+          transcriptChannelId
         };
 
         if (existingIndex >= 0) {
@@ -1025,17 +1017,10 @@ export async function handleSlashCommands(req, res, client) {
             { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
             { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
             { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
-            { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false },
-            { name: 'Nickname Format', value: nicknameFormat, inline: false }
+            { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false }
           )
           .setColor(0x57F287)
           .setTimestamp();
-
-        if (requiredAlbionGuild && albionRegion) {
-          embed.addFields(
-            { name: '🏰 Albion Guild Check', value: `Required Guild: **${requiredAlbionGuild}**\\nRegion: **${albionRegion}**`, inline: false }
-          );
-        }
 
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1082,13 +1067,8 @@ export async function handleSlashCommands(req, res, client) {
             `Category: <#${panel.ticketCategoryId}>`,
             `Ping Role: <@&${panel.pingRoleId}>`,
             `Transcript: <#${panel.transcriptChannelId}>`,
-            `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
-            `Nickname: ${panel.nicknameFormat}`
+            `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`
           ];
-
-          if (panel.requiredAlbionGuild && panel.albionRegion) {
-            fields.push(`🏰 Albion Guild: **${panel.requiredAlbionGuild}** (${panel.albionRegion})`);
-          }
 
           embed.addFields({
             name: `${panel.ticketTypeName} (${panel.panelId})`,

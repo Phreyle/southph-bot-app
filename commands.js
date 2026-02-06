@@ -408,35 +408,6 @@ const TICKET_COMMAND = {
           description: 'Channel where ticket transcripts will be posted',
           required: true,
         },
-        {
-          type: 3,
-          name: 'nickname_format',
-          description: 'Nickname format (use {username} as placeholder)',
-          required: false,
-        },
-        {
-          type: 3,
-          name: 'welcome_message',
-          description: 'Custom welcome message/questions for the ticket (supports \\n for line breaks)',
-          required: false,
-        },
-        {
-          type: 3,
-          name: 'albion_guild',
-          description: 'Required Albion guild name (optional)',
-          required: false,
-        },
-        {
-          type: 3,
-          name: 'albion_region',
-          description: 'Albion region for guild verification',
-          required: false,
-          choices: [
-            { name: '🌏 Asia', value: 'Asia' },
-            { name: '🌍 Europe', value: 'Europe' },
-            { name: '🌎 Americas', value: 'Americas' },
-          ],
-        },
       ],
     },
     {

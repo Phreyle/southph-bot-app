@@ -55,11 +55,7 @@ export async function setupTicketPanel(message, args) {
       ticketCategoryId,
       pingRoleId,
       staffRoleIds,
-      nicknameFormat,
-      welcomeMessage: null, // For prefix command, welcome message isn't supported yet
-      transcriptChannelId,
-      requiredAlbionGuild,
-      albionRegion
+      transcriptChannelId
     };
 
     if (existingIndex >= 0) {
@@ -78,17 +74,10 @@ export async function setupTicketPanel(message, args) {
         { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
         { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
         { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
-        { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false },
-        { name: 'Nickname Format', value: nicknameFormat, inline: false }
+        { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false }
       )
       .setColor(0x57F287)
       .setTimestamp();
-
-    if (requiredAlbionGuild && albionRegion) {
-      embed.addFields(
-        { name: '🏰 Albion Guild Check', value: `Required Guild: **${requiredAlbionGuild}**\nRegion: **${albionRegion}**`, inline: false }
-      );
-    }
 
     return message.reply({ embeds: [embed] });
 
@@ -121,13 +110,8 @@ export async function listTicketPanels(message) {
         `**Category:** <#${panel.ticketCategoryId}>`,
         `**Ping Role:** <@&${panel.pingRoleId}>`,
         `**Transcript:** <#${panel.transcriptChannelId}>`,
-        `**Staff Roles:** ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
-        `**Nickname:** ${panel.nicknameFormat}`
+        `**Staff Roles:** ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`
       ];
-
-      if (panel.requiredAlbionGuild && panel.albionRegion) {
-        fieldLines.push(`**🏰 Albion Guild:** ${panel.requiredAlbionGuild} (${panel.albionRegion})`);
-      }
 
       embed.addFields({
         name: `${panel.ticketTypeName} (${panel.panelId})`,
