@@ -54,9 +54,12 @@ export function createApplyPanelMessage(customMessage = null) {
   const defaultTitle = '📋 Apply to Join';
   const defaultDescription = 'Click the button below to start your application.';
   
+  // Parse \n in custom message to actual newlines
+  const parsedMessage = customMessage ? customMessage.replace(/\\n/g, '\n') : defaultDescription;
+  
   const embed = new EmbedBuilder()
     .setTitle(defaultTitle)
-    .setDescription(customMessage || defaultDescription)
+    .setDescription(parsedMessage)
     .setColor(0x5865F2);
 
   const button = new ButtonBuilder()
@@ -319,6 +322,44 @@ export async function handleClaimTicket(interaction) {
       createdAt: new Date().toISOString(),
       isStaff: true
     });
+
+    // Update the message to disable the claim button
+    try {
+      const channel = interaction.guild.channels.cache.get(channelId);
+      if (channel) {
+        const messages = await channel.messages.fetch({ limit: 10 });
+        const ticketMessage = messages.find(msg => 
+          msg.author.bot && 
+          msg.components.length > 0 && 
+          msg.components[0].components.some(c => c.customId === 'ticket_claim')
+        );
+
+        if (ticketMessage) {
+          // Disable the claim button
+          const closeButton = new ButtonBuilder()
+            .setCustomId('ticket_close')
+            .setLabel('Close Ticket')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('🔒');
+
+          const claimButton = new ButtonBuilder()
+            .setCustomId('ticket_claim')
+            .setLabel('Claimed')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('✅')
+            .setDisabled(true);
+
+          const row = new ActionRowBuilder().addComponents(closeButton, claimButton);
+
+          await ticketMessage.edit({
+            embeds: ticketMessage.embeds,
+            components: [row]
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update claim button:', error);
+    }
 
     return interaction.reply({ embeds: [embed] });
 
