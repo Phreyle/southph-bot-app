@@ -1094,7 +1094,7 @@ export async function handleSlashCommands(req, res, client) {
 
           embed.addFields({
             name: `${panel.ticketTypeName} (${panel.panelId})`,
-            value: fields.join('\\n'),
+            value: fields.join('\n'),
             inline: false
           });
         }
@@ -1251,6 +1251,74 @@ export async function handleSlashCommands(req, res, client) {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
             content: '❌ Failed to run health check.',
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // Subcommand: panel
+    if (subcommand === 'panel') {
+      try {
+        const panelId = req.body.data.options[0].options?.[0]?.value || 'apply';
+
+        // Verify panel exists
+        const panels = await loadPanels(guildId);
+        const panel = panels.find(p => p.panelId === panelId);
+
+        if (!panel) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Panel "${panelId}" not found. Use \`/ticket list\` to see available panels.`,
+              flags: 64
+            },
+          });
+        }
+
+        // Get channel from client
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Could not find guild.',
+              flags: 64
+            },
+          });
+        }
+
+        const channelId = req.body.channel_id;
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Could not find channel.',
+              flags: 64
+            },
+          });
+        }
+
+        // Import createApplyPanelMessage function
+        const { createApplyPanelMessage } = await import('../systems/ticket/ticket-system.js');
+        const panelMessage = createApplyPanelMessage();
+        await channel.send(panelMessage);
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `✅ ${panel.ticketTypeName} panel sent to <#${channelId}>!`,
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error sending ticket panel:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to send ticket panel.',
             flags: 64
           },
         });

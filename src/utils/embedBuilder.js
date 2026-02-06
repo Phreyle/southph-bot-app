@@ -66,6 +66,7 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
     description += `• \`/content removeuser [role]\` - Remove user from content role\n`;
     description += `• \`/ticket setup\` - Setup a ticket panel (with region options)\n`;
     description += `• \`/ticket list\` - List all ticket panels\n`;
+    description += `• \`/ticket panel [panel_id]\` - Send apply button panel\n`;
     description += `• \`/ticket delete <panel_id>\` - Delete a ticket panel\n`;
     description += `• \`/ticket stats\` - View ticket statistics\n`;
     description += `• \`/ticket health\` - Run ticket system health check\n\n`;
@@ -162,6 +163,7 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
         `**🎫 Ticket Commands** (Administrator Only):\n` +
         `• \`/ticket setup\` - Setup a ticket panel with region options\n` +
         `• \`/ticket list\` - List all ticket panels\n` +
+        `• \`/ticket panel [panel_id]\` - Send apply button panel\n` +
         `• \`/ticket delete <panel_id>\` - Delete a ticket panel\n` +
         `• \`/ticket stats\` - View ticket statistics\n` +
         `• \`/ticket health\` - Run ticket system health check\n`

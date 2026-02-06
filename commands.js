@@ -467,6 +467,19 @@ const TICKET_COMMAND = {
       name: 'health',
       description: 'Run ticket system health check',
     },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'panel',
+      description: 'Send the apply panel with button to current channel',
+      options: [
+        {
+          type: 3,
+          name: 'panel_id',
+          description: 'Panel ID to send (default: apply)',
+          required: false,
+        },
+      ],
+    },
   ],
   type: 1,
   default_member_permissions: '8', // Administrator only
