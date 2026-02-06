@@ -57,6 +57,7 @@ export async function setupTicketPanel(message, args) {
       staffRoleIds,
       approveRoleId,
       nicknameFormat,
+      welcomeMessage: null, // For prefix command, welcome message isn't supported yet
       transcriptChannelId,
       requiredAlbionGuild,
       albionRegion

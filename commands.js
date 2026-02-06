@@ -385,9 +385,9 @@ const TICKET_COMMAND = {
           required: true,
         },
         {
-          type: 7, // CHANNEL
+          type: 3, // STRING
           name: 'category',
-          description: 'Category where ticket channels will be created',
+          description: 'Category ID where ticket channels will be created',
           required: true,
         },
         {
@@ -418,6 +418,12 @@ const TICKET_COMMAND = {
           type: 3,
           name: 'nickname_format',
           description: 'Nickname format (use {username} as placeholder)',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'welcome_message',
+          description: 'Custom welcome message/questions for the ticket (supports \\n for line breaks)',
           required: false,
         },
         {

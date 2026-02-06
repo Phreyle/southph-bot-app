@@ -115,6 +115,23 @@ export async function handleApplyTicket(interaction) {
       }
     }
 
+    // Fetch user and roles to ensure they're cached
+    const ticketAuthor = await guild.members.fetch(userId).catch(() => null);
+    if (!ticketAuthor) {
+      return interaction.editReply({
+        content: '❌ Could not fetch your user information. Please try again.'
+      });
+    }
+
+    // Fetch all staff roles to ensure they're cached
+    const staffRoles = [];
+    for (const roleId of panel.staffRoleIds) {
+      const role = await guild.roles.fetch(roleId).catch(() => null);
+      if (role) {
+        staffRoles.push(role);
+      }
+    }
+
     // Create channel with permissions
     const channel = await guild.channels.create({
       name: channelName,
@@ -126,7 +143,7 @@ export async function handleApplyTicket(interaction) {
           deny: [PermissionFlagsBits.ViewChannel]
         },
         {
-          id: userId,
+          id: ticketAuthor.id,
           allow: [
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
@@ -134,8 +151,8 @@ export async function handleApplyTicket(interaction) {
           ]
         },
         // Add staff roles
-        ...panel.staffRoleIds.map(roleId => ({
-          id: roleId,
+        ...staffRoles.map(role => ({
+          id: role.id,
           allow: [
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
@@ -184,9 +201,12 @@ export async function handleApplyTicket(interaction) {
     }
 
     // Send header message in ticket channel
+    const defaultMessage = `Thank you for opening a ticket, <@${userId}>.\nStaff will be with you shortly.`;
+    const welcomeText = panel.welcomeMessage ? panel.welcomeMessage.replace(/\\\\n/g, '\n') : defaultMessage;
+    
     const headerEmbed = new EmbedBuilder()
       .setTitle(`${panel.ticketTypeName} Ticket`)
-      .setDescription(`Thank you for opening a ticket, <@${userId}>.\nStaff will be with you shortly.`)
+      .setDescription(welcomeText)
       .setColor(0x5865F2)
       .setTimestamp();
 

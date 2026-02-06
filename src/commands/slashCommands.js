@@ -989,6 +989,7 @@ export async function handleSlashCommands(req, res, client) {
       const approveRoleId = options.find(o => o.name === 'approve_role').value;
       const transcriptChannelId = options.find(o => o.name === 'transcript_channel').value;
       const nicknameFormat = options.find(o => o.name === 'nickname_format')?.value || 'SOUTH | {username}';
+      const welcomeMessage = options.find(o => o.name === 'welcome_message')?.value || null;
       const requiredAlbionGuild = options.find(o => o.name === 'albion_guild')?.value || null;
       const albionRegion = options.find(o => o.name === 'albion_region')?.value || null;
 
@@ -1004,6 +1005,7 @@ export async function handleSlashCommands(req, res, client) {
           staffRoleIds,
           approveRoleId,
           nicknameFormat,
+          welcomeMessage,
           transcriptChannelId,
           requiredAlbionGuild,
           albionRegion
