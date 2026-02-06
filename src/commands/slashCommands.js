@@ -5,9 +5,11 @@ import { DiscordRequest } from '../../utils.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser, clearAll, CURRENCY } from '../systems/bank/bank.js';
 import { loadPermissions, savePermissions } from '../database/guildData.js';
 import { hasPermissionSlash } from '../utils/permissions.js';
-import { buildHelpEmbed } from '../utils/embedBuilder.js';
+import { buildHelpEmbed, buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { contentState } from '../config/contentState.js';
 import { buildContentEmbed, autoAssignFillPlayers } from '../services/contentService.js';
+import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
+import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
 
 export async function handleSlashCommands(req, res, client) {
   const { name } = req.body.data;
@@ -958,17 +960,331 @@ export async function handleSlashCommands(req, res, client) {
     }
   }
 
-  // "/help" command - Show available commands
+  // "/ticket" command - Ticket system management (Admin only)
+  if (name === 'ticket') {
+    console.log('🎫 Executing /ticket command');
+    const subcommand = req.body.data.options[0].name;
+    const member = req.body.member;
+    const guildId = req.body.guild_id;
+
+    // Check for administrator permission
+    if (!member || !member.permissions || (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) !== BigInt(PermissionFlagsBits.Administrator)) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ You need Administrator permission to use this command.',
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: setup
+    if (subcommand === 'setup') {
+      const options = req.body.data.options[0].options;
+      const panelId = options.find(o => o.name === 'panel_id').value;
+      const ticketTypeName = options.find(o => o.name === 'ticket_type').value;
+      const ticketCategoryId = options.find(o => o.name === 'category').value;
+      const pingRoleId = options.find(o => o.name === 'ping_role').value;
+      const staffRoleIds = options.find(o => o.name === 'staff_roles').value.split(',').map(id => id.trim());
+      const approveRoleId = options.find(o => o.name === 'approve_role').value;
+      const transcriptChannelId = options.find(o => o.name === 'transcript_channel').value;
+      const nicknameFormat = options.find(o => o.name === 'nickname_format')?.value || 'SOUTH | {username}';
+      const requiredAlbionGuild = options.find(o => o.name === 'albion_guild')?.value || null;
+      const albionRegion = options.find(o => o.name === 'albion_region')?.value || null;
+
+      try {
+        const panels = await loadPanels(guildId);
+        const existingIndex = panels.findIndex(p => p.panelId === panelId);
+        
+        const newPanel = {
+          panelId,
+          ticketTypeName,
+          ticketCategoryId,
+          pingRoleId,
+          staffRoleIds,
+          approveRoleId,
+          nicknameFormat,
+          transcriptChannelId,
+          requiredAlbionGuild,
+          albionRegion
+        };
+
+        if (existingIndex >= 0) {
+          panels[existingIndex] = newPanel;
+        } else {
+          panels.push(newPanel);
+        }
+
+        await savePanels(guildId, panels);
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Ticket Panel Configured')
+          .addFields(
+            { name: 'Panel ID', value: panelId, inline: true },
+            { name: 'Ticket Type', value: ticketTypeName, inline: true },
+            { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
+            { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
+            { name: 'Approve Role', value: `<@&${approveRoleId}>`, inline: true },
+            { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
+            { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false },
+            { name: 'Nickname Format', value: nicknameFormat, inline: false }
+          )
+          .setColor(0x57F287)
+          .setTimestamp();
+
+        if (requiredAlbionGuild && albionRegion) {
+          embed.addFields(
+            { name: '🏰 Albion Guild Check', value: `Required Guild: **${requiredAlbionGuild}**\\nRegion: **${albionRegion}**`, inline: false }
+          );
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error setting up ticket panel:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to setup ticket panel. Check the console for details.',
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // Subcommand: list
+    if (subcommand === 'list') {
+      try {
+        const panels = await loadPanels(guildId);
+
+        if (panels.length === 0) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ No ticket panels configured for this server.',
+              flags: 64
+            },
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle('🎫 Ticket Panels')
+          .setColor(0x5865F2)
+          .setTimestamp();
+
+        for (const panel of panels) {
+          const fields = [
+            `Category: <#${panel.ticketCategoryId}>`,
+            `Ping Role: <@&${panel.pingRoleId}>`,
+            `Approve Role: <@&${panel.approveRoleId}>`,
+            `Transcript: <#${panel.transcriptChannelId}>`,
+            `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
+            `Nickname: ${panel.nicknameFormat}`
+          ];
+
+          if (panel.requiredAlbionGuild && panel.albionRegion) {
+            fields.push(`🏰 Albion Guild: **${panel.requiredAlbionGuild}** (${panel.albionRegion})`);
+          }
+
+          embed.addFields({
+            name: `${panel.ticketTypeName} (${panel.panelId})`,
+            value: fields.join('\\n'),
+            inline: false
+          });
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error listing ticket panels:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to list ticket panels.',
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // Subcommand: delete
+    if (subcommand === 'delete') {
+      const panelId = req.body.data.options[0].options[0].value;
+
+      try {
+        const panels = await loadPanels(guildId);
+        const index = panels.findIndex(p => p.panelId === panelId);
+        
+        if (index === -1) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ Panel "${panelId}" not found.`,
+              flags: 64
+            },
+          });
+        }
+
+        panels.splice(index, 1);
+        await savePanels(guildId, panels);
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `✅ Ticket panel "${panelId}" deleted.`,
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error deleting ticket panel:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to delete ticket panel.',
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // Subcommand: stats
+    if (subcommand === 'stats') {
+      try {
+        const stats = await getTicketStats(guildId);
+
+        if (!stats) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Failed to retrieve ticket statistics.',
+              flags: 64
+            },
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle('📊 Ticket Statistics')
+          .addFields(
+            { name: 'Total Tickets', value: String(stats.total), inline: true },
+            { name: 'Open', value: String(stats.open), inline: true },
+            { name: 'Claimed', value: String(stats.claimed), inline: true },
+            { name: 'Closed', value: String(stats.closed), inline: true },
+            { name: 'Approved', value: String(stats.approved), inline: true },
+            { name: 'Last Ticket ID', value: String(stats.lastTicketId), inline: true }
+          )
+          .setColor(0x5865F2)
+          .setTimestamp();
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error getting ticket stats:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to retrieve ticket statistics.',
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // Subcommand: health
+    if (subcommand === 'health') {
+      try {
+        const health = await ticketSystemHealthCheck(guildId);
+
+        const statusEmoji = {
+          healthy: '✅',
+          warning: '⚠️',
+          error: '❌'
+        }[health.status];
+
+        const embed = new EmbedBuilder()
+          .setTitle(`${statusEmoji} Ticket System Health Check`)
+          .addFields(
+            { name: 'Status', value: health.status.toUpperCase(), inline: true },
+            { name: 'Panels', value: String(health.stats?.panels || 0), inline: true },
+            { name: 'Total Tickets', value: String(health.stats?.totalTickets || 0), inline: true }
+          )
+          .setColor(health.status === 'healthy' ? 0x57F287 : health.status === 'warning' ? 0xFEE75C : 0xED4245)
+          .setTimestamp();
+
+        if (health.issues.length > 0) {
+          embed.addFields({
+            name: 'Issues',
+            value: health.issues.join('\\n'),
+            inline: false
+          });
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error running health check:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to run health check.',
+            flags: 64
+          },
+        });
+      }
+    }
+  }
+
+  // "/help" command - Show available commands with pagination
   if (name === 'help') {
     console.log('❓ Executing /help command');
     const guildId = req.body.guild_id;
     const member = req.body.member;
-    const embed = buildHelpEmbed(member, guildId, true);
-
+    
+    const pages = buildPaginatedHelpEmbeds(member, guildId, true);
+    
+    // If only one page, send without buttons
+    if (pages.length === 1) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [pages[0].toJSON()],
+          flags: 64
+        },
+      });
+    }
+    
+    // Multiple pages - send with navigation buttons
+    const buttons = buildHelpNavigationButtons(0, pages.length);
+    
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        embeds: [embed.toJSON()],
+        embeds: [pages[0].toJSON()],
+        components: [buttons.toJSON()],
         flags: 64
       },
     });

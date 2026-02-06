@@ -362,6 +362,118 @@ const PERMS_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND];
+// Ticket management command (Admin only)
+const TICKET_COMMAND = {
+  name: 'ticket',
+  description: 'Manage ticket system panels (Admin only)',
+  options: [
+    {
+      type: 1, // SUB_COMMAND
+      name: 'setup',
+      description: 'Setup or update a ticket panel',
+      options: [
+        {
+          type: 3, // STRING
+          name: 'panel_id',
+          description: 'Unique panel identifier (e.g., "apply", "support")',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'ticket_type',
+          description: 'Display name for this ticket type (e.g., "Apply", "Support")',
+          required: true,
+        },
+        {
+          type: 7, // CHANNEL
+          name: 'category',
+          description: 'Category where ticket channels will be created',
+          required: true,
+        },
+        {
+          type: 8, // ROLE
+          name: 'ping_role',
+          description: 'Role to ping when a ticket is created',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'staff_roles',
+          description: 'Staff role IDs (comma-separated, no spaces)',
+          required: true,
+        },
+        {
+          type: 8, // ROLE
+          name: 'approve_role',
+          description: 'Role that can approve tickets',
+          required: true,
+        },
+        {
+          type: 7, // CHANNEL
+          name: 'transcript_channel',
+          description: 'Channel where ticket transcripts will be posted',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'nickname_format',
+          description: 'Nickname format (use {username} as placeholder)',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'albion_guild',
+          description: 'Required Albion guild name (optional)',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'albion_region',
+          description: 'Albion region for guild verification',
+          required: false,
+          choices: [
+            { name: '🌏 Asia', value: 'Asia' },
+            { name: '🌍 Europe', value: 'Europe' },
+            { name: '🌎 Americas', value: 'Americas' },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'list',
+      description: 'List all configured ticket panels',
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'delete',
+      description: 'Delete a ticket panel',
+      options: [
+        {
+          type: 3,
+          name: 'panel_id',
+          description: 'Panel ID to delete',
+          required: true,
+        },
+      ],
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'stats',
+      description: 'View ticket statistics',
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'health',
+      description: 'Run ticket system health check',
+    },
+  ],
+  type: 1,
+  default_member_permissions: '8', // Administrator only
+  integration_types: [0],
+  contexts: [0],
+};
+
+const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND, TICKET_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);

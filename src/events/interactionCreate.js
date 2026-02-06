@@ -6,6 +6,7 @@ import {
   handleApproveTicket, 
   handleCloseTicket 
 } from '../systems/ticket/ticket-system.js';
+import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -183,6 +184,42 @@ export async function handleButtonInteractions(req, res, client) {
 
     await handleCloseTicket(interaction);
     return;
+  }
+
+  // Help pagination buttons
+  if (componentId.startsWith('help_prev_') || componentId.startsWith('help_next_')) {
+    console.log('📖 Help pagination button clicked');
+    const guildId = req.body.guild_id;
+    const member = req.body.member;
+    
+    // Extract current page from button ID
+    const currentPage = parseInt(componentId.split('_')[2]);
+    const isNext = componentId.startsWith('help_next_');
+    const newPage = isNext ? currentPage + 1 : currentPage - 1;
+    
+    // Build help pages
+    const pages = buildPaginatedHelpEmbeds(member, guildId, true);
+    
+    // Validate page number
+    if (newPage < 0 || newPage >= pages.length) {
+      return res.send({
+        type: InteractionResponseType.UPDATE_MESSAGE,
+        data: {}
+      });
+    }
+    
+    // Build new navigation buttons
+    const buttons = buildHelpNavigationButtons(newPage, pages.length);
+    
+    // Update the message with new page
+    return res.send({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: {
+        embeds: [pages[newPage].toJSON()],
+        components: [buttons.toJSON()],
+        flags: 64
+      }
+    });
   }
 
   console.error(`❌ Unknown component ID: ${componentId}`);
