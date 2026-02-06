@@ -1,0 +1,15 @@
+[
+  {
+    "panelId": "apply",
+    "ticketTypeName": "Apply",
+    "ticketCategoryId": "YOUR_CATEGORY_ID_HERE",
+    "pingRoleId": "YOUR_PING_ROLE_ID_HERE",
+    "staffRoleIds": [
+      "YOUR_STAFF_ROLE_ID_1",
+      "YOUR_STAFF_ROLE_ID_2"
+    ],
+    "approveRoleId": "YOUR_APPROVE_ROLE_ID_HERE",
+    "nicknameFormat": "SOUTH | {username}",
+    "transcriptChannelId": "YOUR_TRANSCRIPT_CHANNEL_ID_HERE"
+  }
+]

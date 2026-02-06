@@ -7,6 +7,21 @@ import axios from 'axios';
 import {InteractionType,InteractionResponseType,verifyKeyMiddleware,} from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser,clearAll,CURRENCY } from './bank.js';
+import { 
+  createApplyPanelMessage,
+  handleApplyTicket, 
+  handleClaimTicket, 
+  handleApproveTicket, 
+  handleCloseTicket,
+  handleTicketMessage 
+} from './ticket-system.js';
+import { 
+  setupTicketPanel, 
+  listTicketPanels, 
+  deleteTicketPanel,
+  getTicketStatsCommand,
+  ticketHealthCommand 
+} from './ticket-commands.js';
 
 // Data directory from environment variable (default: /home/container/data)
 const DATA_DIR = process.env.DATA_DIR || '/home/container/data';
@@ -239,7 +254,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers // Required for member fetch in ticket system
   ] 
 });
 
@@ -1226,6 +1242,95 @@ client.on('messageCreate', async (message) => {
     const embed = buildHelpEmbed(message.member, message.guild.id, false);
     await message.reply({ embeds: [embed] });
     return;
+  }
+
+  // ==================== TICKET COMMANDS ====================
+  
+  // !ticketsetup command
+  if (command === 'ticketsetup') {
+    await setupTicketPanel(message, args);
+    return;
+  }
+
+  // !ticketpanels command
+  if (command === 'ticketpanels') {
+    await listTicketPanels(message);
+    return;
+  }
+
+  // !ticketdelete command
+  if (command === 'ticketdelete') {
+    await deleteTicketPanel(message, args);
+    return;
+  }
+
+  // !ticketstats command
+  if (command === 'ticketstats') {
+    await getTicketStatsCommand(message);
+    return;
+  }
+
+  // !tickethealth command
+  if (command === 'tickethealth') {
+    await ticketHealthCommand(message);
+    return;
+  }
+
+  // !applypanel command - sends the apply button in the current channel
+  if (command === 'applypanel') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      await message.reply('❌ You need Administrator permission to use this command.');
+      return;
+    }
+    
+    const panelMessage = createApplyPanelMessage();
+    await message.channel.send(panelMessage);
+    await message.reply('✅ Apply panel created!');
+    return;
+  }
+
+  // Log ticket messages
+  await handleTicketMessage(message);
+});
+
+// ==================== INTERACTION HANDLER (Buttons) ====================
+client.on('interactionCreate', async (interaction) => {
+  try {
+    // Handle button interactions
+    if (!interaction.isButton()) return;
+
+    const customId = interaction.customId;
+
+    // Ticket system buttons
+    if (customId === 'apply_ticket') {
+      await handleApplyTicket(interaction);
+      return;
+    }
+
+    if (customId === 'ticket_claim') {
+      await handleClaimTicket(interaction);
+      return;
+    }
+
+    if (customId === 'ticket_approve') {
+      await handleApproveTicket(interaction);
+      return;
+    }
+
+    if (customId === 'ticket_close') {
+      await handleCloseTicket(interaction);
+      return;
+    }
+
+  } catch (error) {
+    console.error('Error handling interaction:', error);
+    
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: '❌ An error occurred while processing your request.',
+        ephemeral: true
+      }).catch(console.error);
+    }
   }
 });
 
