@@ -92,13 +92,26 @@ export async function handleButtonInteractions(req, res, client) {
 
   if (componentId === 'ticket_claim') {
     console.log('✋ Claim ticket button clicked');
+    const guild = client.guilds.cache.get(req.body.guild_id);
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+    
+    // Fetch the member from guild to get proper roles
+    let guildMember = null;
+    if (guild && userId) {
+      try {
+        guildMember = await guild.members.fetch(userId);
+      } catch (error) {
+        console.error('Failed to fetch member:', error);
+      }
+    }
+
     const interaction = {
       customId: componentId,
       guildId: req.body.guild_id,
       user: req.body.member?.user || req.body.user,
-      member: req.body.member,
+      member: guildMember,
       channelId: req.body.channel_id,
-      guild: client.guilds.cache.get(req.body.guild_id),
+      guild: guild,
       reply: async (options) => {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -117,13 +130,27 @@ export async function handleButtonInteractions(req, res, client) {
 
   if (componentId === 'ticket_close') {
     console.log('🔒 Close ticket button clicked');
+    const guild = client.guilds.cache.get(req.body.guild_id);
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+    
+    // Fetch the member from guild to get proper roles
+    let guildMember = null;
+    if (guild && userId) {
+      try {
+        guildMember = await guild.members.fetch(userId);
+      } catch (error) {
+        console.error('Failed to fetch member:', error);
+      }
+    }
+
     const interaction = {
       customId: componentId,
       guildId: req.body.guild_id,
       user: req.body.member?.user || req.body.user,
-      member: req.body.member,
+      member: guildMember,
       channelId: req.body.channel_id,
-      guild: client.guilds.cache.get(req.body.guild_id),
+      guild: guild,
+      channel: guild?.channels.cache.get(req.body.channel_id),
       deferReply: async (options) => {
         return res.send({
           type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
@@ -139,7 +166,20 @@ export async function handleButtonInteractions(req, res, client) {
             flags: options.ephemeral ? 64 : 0
           }
         });
-      }
+      },
+      reply: async (options) => {
+        if (!res.headersSent) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: options.content,
+              embeds: options.embeds?.map(e => e.toJSON?.() || e),
+              flags: options.ephemeral ? 64 : 0
+            }
+          });
+        }
+      },
+      deferred: false
     };
 
     await handleCloseTicket(interaction);

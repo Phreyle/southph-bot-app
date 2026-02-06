@@ -1238,7 +1238,9 @@ export async function handleSlashCommands(req, res, client) {
     // Subcommand: panel
     if (subcommand === 'panel') {
       try {
-        const panelId = req.body.data.options[0].options?.[0]?.value || 'apply';
+        const options = req.body.data.options[0].options || [];
+        const panelId = options.find(o => o.name === 'panel_id')?.value || 'apply';
+        const customMessage = options.find(o => o.name === 'message')?.value || null;
 
         // Verify panel exists
         const panels = await loadPanels(guildId);
@@ -1280,7 +1282,7 @@ export async function handleSlashCommands(req, res, client) {
 
         // Import createApplyPanelMessage function
         const { createApplyPanelMessage } = await import('../systems/ticket/ticket-system.js');
-        const panelMessage = createApplyPanelMessage();
+        const panelMessage = createApplyPanelMessage(customMessage);
         await channel.send(panelMessage);
 
         return res.send({
@@ -1297,6 +1299,46 @@ export async function handleSlashCommands(req, res, client) {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
             content: '❌ Failed to send ticket panel.',
+            flags: 64
+          },
+        });
+      }
+    }
+
+    // Subcommand: reset
+    if (subcommand === 'reset') {
+      try {
+        const { resetTicketData } = await import('../systems/ticket/ticket-db.js');
+        
+        // Reset all ticket data
+        await resetTicketData(guildId);
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Ticket System Reset')
+          .setDescription(
+            'All ticket data has been cleared:\n' +
+            '• All tickets deleted\n' +
+            '• All transcripts deleted\n' +
+            '• Ticket counter reset to 0\n\n' +
+            'Next ticket will be **ticket-1**'
+          )
+          .setColor(0x57F287)
+          .setTimestamp();
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          },
+        });
+
+      } catch (error) {
+        console.error('Error resetting ticket data:', error);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Failed to reset ticket data.',
             flags: 64
           },
         });

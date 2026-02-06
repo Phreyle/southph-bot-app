@@ -449,7 +449,18 @@ const TICKET_COMMAND = {
           description: 'Panel ID to send (default: apply)',
           required: false,
         },
+        {
+          type: 3,
+          name: 'message',
+          description: 'Custom message for the panel (e.g., "Join our guild! Click Apply below.")',
+          required: false,
+        },
       ],
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'reset',
+      description: 'Reset all ticket data and counter (WARNING: Deletes all ticket history!)',
     },
   ],
   type: 1,

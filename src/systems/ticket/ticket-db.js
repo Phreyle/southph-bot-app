@@ -272,3 +272,22 @@ export async function getNextTicketId(guildId) {
   await saveMeta(guildId, meta);
   return meta.lastTicketId;
 }
+
+/**
+ * Reset all ticket data (tickets, transcripts, counter)
+ * WARNING: This deletes all ticket history!
+ */
+export async function resetTicketData(guildId) {
+  await ensureGuildDir(guildId);
+  
+  // Reset tickets
+  await saveTickets(guildId, []);
+  
+  // Reset transcripts
+  await saveTranscripts(guildId, []);
+  
+  // Reset meta (counter)
+  await saveMeta(guildId, { lastTicketId: 0 });
+  
+  return true;
+}

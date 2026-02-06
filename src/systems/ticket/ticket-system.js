@@ -43,17 +43,20 @@ function formatDate(date) {
  * Check if user has staff role
  */
 function isStaff(member, staffRoleIds) {
-  if (!member || !staffRoleIds) return false;
+  if (!member || !staffRoleIds || !member.roles || !member.roles.cache) return false;
   return staffRoleIds.some(roleId => member.roles.cache.has(roleId));
 }
 
 /**
  * Create Apply Panel Message
  */
-export function createApplyPanelMessage() {
+export function createApplyPanelMessage(customMessage = null) {
+  const defaultTitle = '📋 Apply to Join';
+  const defaultDescription = 'Click the button below to start your application.';
+  
   const embed = new EmbedBuilder()
-    .setTitle('📋 Apply to Join')
-    .setDescription('Click the button below to start your application.')
+    .setTitle(defaultTitle)
+    .setDescription(customMessage || defaultDescription)
     .setColor(0x5865F2);
 
   const button = new ButtonBuilder()
@@ -237,8 +240,8 @@ export async function handleApplyTicket(interaction) {
 
     const row = new ActionRowBuilder().addComponents(closeButton, claimButton);
 
-    // Ping role
-    const pingMessage = panel.pingRoleId ? `<@&${panel.pingRoleId}>` : '';
+    // Ping role and user who created the ticket
+    const pingMessage = `<@${userId}> ${panel.pingRoleId ? `<@&${panel.pingRoleId}>` : ''}`;
     await channel.send({ content: pingMessage, embeds: [headerEmbed], components: [row] });
 
     return interaction.editReply({
