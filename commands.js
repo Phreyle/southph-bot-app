@@ -403,12 +403,6 @@ const TICKET_COMMAND = {
           required: true,
         },
         {
-          type: 8, // ROLE
-          name: 'approve_role',
-          description: 'Role that can approve tickets',
-          required: true,
-        },
-        {
           type: 7, // CHANNEL
           name: 'transcript_channel',
           description: 'Channel where ticket transcripts will be posted',

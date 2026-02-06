@@ -87,10 +87,23 @@ export async function handleApplyTicket(interaction) {
     // Check for duplicate open tickets
     const existingTicket = await getOpenTicketByAuthor(guildId, userId, 'apply');
     if (existingTicket) {
-      return interaction.reply({
-        content: `❌ You already have an open ticket: <#${existingTicket.channelId}>`,
-        ephemeral: true
-      });
+      // Verify the channel still exists
+      const existingChannel = guild.channels.cache.get(existingTicket.channelId);
+      if (existingChannel) {
+        return interaction.reply({
+          content: `❌ You already have an open ticket: <#${existingTicket.channelId}>`,
+          ephemeral: true
+        });
+      } else {
+        // Channel was deleted, update ticket status to closed
+        await updateTicket(guildId, existingTicket.ticketId, {
+          status: 'closed',
+          closeDate: new Date().toISOString(),
+          closeReason: 'Channel deleted',
+          closedBy: null
+        });
+        // Allow user to create new ticket
+      }
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -223,13 +236,7 @@ export async function handleApplyTicket(interaction) {
       .setStyle(ButtonStyle.Success)
       .setEmoji('✋');
 
-    const approveButton = new ButtonBuilder()
-      .setCustomId('ticket_approve')
-      .setLabel('Approve')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('✅');
-
-    const row = new ActionRowBuilder().addComponents(closeButton, claimButton, approveButton);
+    const row = new ActionRowBuilder().addComponents(closeButton, claimButton);
 
     // Ping role
     const pingMessage = panel.pingRoleId ? `<@&${panel.pingRoleId}>` : '';
@@ -302,6 +309,15 @@ export async function handleClaimTicket(interaction) {
       .setColor(0x57F287)
       .setTimestamp();
 
+    // Add transcript entry for claim
+    await addTranscriptMessage(guildId, ticket.ticketId, {
+      authorId: userId,
+      authorTag: interaction.user.tag,
+      content: `[SYSTEM] Ticket claimed by ${interaction.user.tag}`,
+      createdAt: new Date().toISOString(),
+      isStaff: true
+    });
+
     return interaction.reply({ embeds: [embed] });
 
   } catch (error) {
@@ -310,220 +326,6 @@ export async function handleClaimTicket(interaction) {
       content: '❌ Failed to claim ticket.',
       ephemeral: true
     });
-  }
-}
-
-/**
- * Check Albion Online guild membership
- */
-async function checkAlbionGuild(playerName, requiredGuild, region) {
-  try {
-    const regionUrls = {
-      'Americas': 'https://gameinfo.albiononline.com/api/gameinfo',
-      'Europe': 'https://gameinfo-ams.albiononline.com/api/gameinfo',
-      'Asia': 'https://gameinfo-sgp.albiononline.com/api/gameinfo'
-    };
-
-    const baseUrl = regionUrls[region];
-    if (!baseUrl) {
-      return { success: false, error: 'Invalid region specified' };
-    }
-
-    // Search for player
-    const searchResponse = await axios.get(`${baseUrl}/search?q=${encodeURIComponent(playerName)}`, {
-      timeout: 5000
-    });
-
-    const players = searchResponse.data.players || [];
-    if (players.length === 0) {
-      return { success: false, error: `Player "${playerName}" not found in ${region}` };
-    }
-
-    // Find exact match (case-insensitive)
-    const exactMatch = players.find(p => p.Name.toLowerCase() === playerName.toLowerCase());
-    const playerId = exactMatch ? exactMatch.Id : players[0].Id;
-
-    // Fetch detailed player info
-    const playerResponse = await axios.get(`${baseUrl}/players/${playerId}`, {
-      timeout: 5000
-    });
-
-    const playerData = playerResponse.data;
-
-    // Check guild membership
-    if (!playerData.GuildName) {
-      return { success: false, error: `Player "${playerName}" is not in any guild` };
-    }
-
-    if (playerData.GuildName.toLowerCase() !== requiredGuild.toLowerCase()) {
-      return { 
-        success: false, 
-        error: `Player is in guild "${playerData.GuildName}" but needs to be in "${requiredGuild}"` 
-      };
-    }
-
-    return { 
-      success: true, 
-      guildName: playerData.GuildName,
-      playerName: playerData.Name 
-    };
-
-  } catch (error) {
-    console.error('Error checking Albion guild:', error);
-    return { success: false, error: 'Failed to verify guild membership with Albion API' };
-  }
-}
-
-/**
- * Handle approve ticket button
- */
-export async function handleApproveTicket(interaction) {
-  try {
-    const guildId = interaction.guildId;
-    const channelId = interaction.channelId;
-    const userId = interaction.user.id;
-
-    const ticket = await getTicketByChannel(guildId, channelId);
-    if (!ticket) {
-      return interaction.reply({
-        content: '❌ This is not a valid ticket channel.',
-        ephemeral: true
-      });
-    }
-
-    const panel = await getPanel(guildId, ticket.panelId);
-    if (!panel) {
-      return interaction.reply({
-        content: '❌ Panel configuration not found.',
-        ephemeral: true
-      });
-    }
-
-    // Check if user is staff
-    const member = interaction.member;
-    if (!isStaff(member, panel.staffRoleIds)) {
-      return interaction.reply({
-        content: '❌ Only staff members can approve tickets.',
-        ephemeral: true
-      });
-    }
-
-    await interaction.deferReply();
-
-    // Get ticket author
-    const guild = interaction.guild;
-    const ticketAuthor = await guild.members.fetch(ticket.authorId).catch(() => null);
-    if (!ticketAuthor) {
-      return interaction.editReply({
-        content: '❌ Ticket author not found in the server.',
-      });
-    }
-
-    // Check Albion guild membership if configured
-    if (panel.requiredAlbionGuild && panel.albionRegion) {
-      const playerName = ticketAuthor.user.username;
-      
-      const guildCheck = await checkAlbionGuild(playerName, panel.requiredAlbionGuild, panel.albionRegion);
-      
-      if (!guildCheck.success) {
-        return interaction.editReply({
-          content: `❌ Guild verification failed: ${guildCheck.error}\n\n` +
-                   `Required: **${panel.requiredAlbionGuild}** in **${panel.albionRegion}** region\n` +
-                   `Please ensure your Discord username matches your Albion character name.`,
-        });
-      }
-
-      console.log(`✅ Guild verified: ${guildCheck.playerName} is in ${guildCheck.guildName}`);
-    }
-
-    // Assign role
-    if (panel.approveRoleId) {
-      try {
-        await ticketAuthor.roles.add(panel.approveRoleId);
-      } catch (error) {
-        console.error('Failed to assign role:', error);
-        // Continue even if role assignment fails
-      }
-    }
-
-    // Change nickname
-    if (panel.nicknameFormat) {
-      try {
-        const newNickname = panel.nicknameFormat.replace('{username}', ticketAuthor.user.username);
-        await ticketAuthor.setNickname(newNickname);
-      } catch (error) {
-        console.error('Failed to change nickname:', error);
-        // Continue even if nickname change fails
-      }
-    }
-
-    // Get transcript
-    const transcript = await getTranscript(guildId, ticket.ticketId);
-
-    // Update ticket
-    const closeDate = new Date().toISOString();
-    await updateTicket(guildId, ticket.ticketId, {
-      closedBy: userId,
-      status: 'approved',
-      closeDate,
-      closeReason: 'Approved'
-    });
-
-    // Send "Ticket Closed" embed to transcript channel
-    if (panel.transcriptChannelId) {
-      const transcriptChannel = guild.channels.cache.get(panel.transcriptChannelId);
-      if (transcriptChannel) {
-        const closedEmbed = new EmbedBuilder()
-          .setTitle('🎫 Ticket Closed')
-          .addFields(
-            { name: 'Ticket Name', value: `ticket-${ticket.ticketId}`, inline: true },
-            { name: 'Ticket Author', value: `<@${ticket.authorId}>`, inline: true },
-            { name: 'Closed By', value: `<@${userId}>`, inline: true },
-            { name: 'Open Date', value: formatDate(ticket.openDate), inline: true },
-            { name: 'Close Date', value: formatDate(closeDate), inline: true },
-            { name: 'Ticket Close Reason', value: 'Approved', inline: false },
-            { 
-              name: 'Staff Message Count', 
-              value: transcript ? String(transcript.staffMessageCount) : 'No staff messages found.',
-              inline: false 
-            }
-          )
-          .setColor(0xED4245)
-          .setTimestamp();
-
-        await transcriptChannel.send({ embeds: [closedEmbed] });
-      }
-    }
-
-    await interaction.editReply({
-      content: '✅ Ticket approved. Channel will be deleted in 5 seconds...'
-    });
-
-    // Delete channel after delay
-    setTimeout(async () => {
-      try {
-        const channel = guild.channels.cache.get(channelId);
-        if (channel) {
-          await channel.delete();
-        }
-      } catch (error) {
-        console.error('Failed to delete channel:', error);
-      }
-    }, 5000);
-
-  } catch (error) {
-    console.error('Error approving ticket:', error);
-    
-    if (interaction.deferred) {
-      return interaction.editReply({
-        content: '❌ Failed to approve ticket.',
-      });
-    } else {
-      return interaction.reply({
-        content: '❌ Failed to approve ticket.',
-        ephemeral: true
-      });
-    }
   }
 }
 
@@ -582,21 +384,28 @@ export async function handleCloseTicket(interaction) {
     if (panel.transcriptChannelId) {
       const transcriptChannel = interaction.guild.channels.cache.get(panel.transcriptChannelId);
       if (transcriptChannel) {
+        const fields = [
+          { name: 'Ticket Name', value: `ticket-${ticket.ticketId}`, inline: true },
+          { name: 'Ticket Author', value: `<@${ticket.authorId}>`, inline: true },
+          { name: 'Closed By', value: `<@${userId}>`, inline: true },
+          { name: 'Claimed By', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : 'Unclaimed', inline: true },
+          { name: 'Open Date', value: formatDate(ticket.openDate), inline: true },
+          { name: 'Close Date', value: formatDate(closeDate), inline: true },
+          { 
+            name: 'Staff Message Count', 
+            value: transcript ? String(transcript.staffMessageCount) : '0',
+            inline: true 
+          },
+          { 
+            name: 'Total Messages', 
+            value: transcript ? String(transcript.messages.length) : '0',
+            inline: true 
+          }
+        ];
+
         const closedEmbed = new EmbedBuilder()
-          .setTitle('🎫 Ticket Closed')
-          .addFields(
-            { name: 'Ticket Name', value: `ticket-${ticket.ticketId}`, inline: true },
-            { name: 'Ticket Author', value: `<@${ticket.authorId}>`, inline: true },
-            { name: 'Closed By', value: `<@${userId}>`, inline: true },
-            { name: 'Open Date', value: formatDate(ticket.openDate), inline: true },
-            { name: 'Close Date', value: formatDate(closeDate), inline: true },
-            { name: 'Ticket Close Reason', value: 'No Reason Provided', inline: false },
-            { 
-              name: 'Staff Message Count', 
-              value: transcript ? String(transcript.staffMessageCount) : 'No staff messages found.',
-              inline: false 
-            }
-          )
+          .setTitle('🔒 Ticket Closed')
+          .addFields(fields)
           .setColor(0xED4245)
           .setTimestamp();
 

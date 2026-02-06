@@ -55,7 +55,6 @@ export async function setupTicketPanel(message, args) {
       ticketCategoryId,
       pingRoleId,
       staffRoleIds,
-      approveRoleId,
       nicknameFormat,
       welcomeMessage: null, // For prefix command, welcome message isn't supported yet
       transcriptChannelId,
@@ -78,7 +77,6 @@ export async function setupTicketPanel(message, args) {
         { name: 'Ticket Type', value: ticketTypeName, inline: true },
         { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
         { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
-        { name: 'Approve Role', value: `<@&${approveRoleId}>`, inline: true },
         { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
         { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false },
         { name: 'Nickname Format', value: nicknameFormat, inline: false }
@@ -122,7 +120,6 @@ export async function listTicketPanels(message) {
       const fieldLines = [
         `**Category:** <#${panel.ticketCategoryId}>`,
         `**Ping Role:** <@&${panel.pingRoleId}>`,
-        `**Approve Role:** <@&${panel.approveRoleId}>`,
         `**Transcript:** <#${panel.transcriptChannelId}>`,
         `**Staff Roles:** ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
         `**Nickname:** ${panel.nicknameFormat}`

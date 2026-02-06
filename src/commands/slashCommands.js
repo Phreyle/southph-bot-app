@@ -986,7 +986,6 @@ export async function handleSlashCommands(req, res, client) {
       const ticketCategoryId = options.find(o => o.name === 'category').value;
       const pingRoleId = options.find(o => o.name === 'ping_role').value;
       const staffRoleIds = options.find(o => o.name === 'staff_roles').value.split(',').map(id => id.trim());
-      const approveRoleId = options.find(o => o.name === 'approve_role').value;
       const transcriptChannelId = options.find(o => o.name === 'transcript_channel').value;
       const nicknameFormat = options.find(o => o.name === 'nickname_format')?.value || 'SOUTH | {username}';
       const welcomeMessage = options.find(o => o.name === 'welcome_message')?.value || null;
@@ -1003,7 +1002,6 @@ export async function handleSlashCommands(req, res, client) {
           ticketCategoryId,
           pingRoleId,
           staffRoleIds,
-          approveRoleId,
           nicknameFormat,
           welcomeMessage,
           transcriptChannelId,
@@ -1026,7 +1024,6 @@ export async function handleSlashCommands(req, res, client) {
             { name: 'Ticket Type', value: ticketTypeName, inline: true },
             { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
             { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
-            { name: 'Approve Role', value: `<@&${approveRoleId}>`, inline: true },
             { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
             { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false },
             { name: 'Nickname Format', value: nicknameFormat, inline: false }
@@ -1084,7 +1081,6 @@ export async function handleSlashCommands(req, res, client) {
           const fields = [
             `Category: <#${panel.ticketCategoryId}>`,
             `Ping Role: <@&${panel.pingRoleId}>`,
-            `Approve Role: <@&${panel.approveRoleId}>`,
             `Transcript: <#${panel.transcriptChannelId}>`,
             `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`,
             `Nickname: ${panel.nicknameFormat}`

@@ -3,7 +3,6 @@ import { DiscordRequest } from '../../utils.js';
 import { 
   handleApplyTicket, 
   handleClaimTicket, 
-  handleApproveTicket, 
   handleCloseTicket 
 } from '../systems/ticket/ticket-system.js';
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
@@ -23,11 +22,6 @@ export async function handleInteractionCreate(interaction) {
 
     if (customId === 'ticket_claim') {
       await handleClaimTicket(interaction);
-      return;
-    }
-
-    if (customId === 'ticket_approve') {
-      await handleApproveTicket(interaction);
       return;
     }
 
@@ -118,40 +112,6 @@ export async function handleButtonInteractions(req, res, client) {
     };
 
     await handleClaimTicket(interaction);
-    return;
-  }
-
-  if (componentId === 'ticket_approve') {
-    console.log('✅ Approve ticket button clicked');
-    const interaction = {
-      customId: componentId,
-      guildId: req.body.guild_id,
-      user: req.body.member?.user || req.body.user,
-      member: req.body.member,
-      channelId: req.body.channel_id,
-      guild: client.guilds.cache.get(req.body.guild_id),
-      deferReply: async (options) => {
-        return res.send({
-          type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-          data: { flags: options?.ephemeral ? 64 : 0 }
-        });
-      },
-      editReply: async (options) => {
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: options.content,
-            embeds: options.embeds?.map(e => e.toJSON?.() || e),
-            flags: options.ephemeral ? 64 : 0
-          }
-        });
-      },
-      replied: false,
-      deferred: false,
-      channel: null
-    };
-
-    await handleApproveTicket(interaction);
     return;
   }
 
