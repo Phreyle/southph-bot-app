@@ -10,7 +10,8 @@ export const buildContentEmbed = () => {
     'cta': '⚔️',
     'gcamps': '🏕️',
     'ff': '🛡️',
-    'tracking': '🎯'
+    'tracking': '🎯',
+    'avadungeon': '⚔️'
   }[contentType] || '🎮';
 
   // ROA - Fixed 7 slots
@@ -125,6 +126,54 @@ export const buildContentEmbed = () => {
         `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
         `${statusLine}\n\n` +
         roleLines.join('\n')
+      );
+  }
+
+  // AVADUNGEON - Fixed 10 slots
+  if (contentType === 'avadungeon') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.OFFTANK} OFF-TANK (offtank)**   ${contentState.roles.offtank ? '➡️ <@' + contentState.roles.offtank + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} STUN (stun)**   ${contentState.roles.stun ? '➡️ <@' + contentState.roles.stun + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.HEALER} MAIN HEALER (mainhealer)**   ${contentState.roles.mainhealer ? '➡️ <@' + contentState.roles.mainhealer + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.HEALER} PARTY HEALER (partyhealer)**   ${contentState.roles.partyhealer ? '➡️ <@' + contentState.roles.partyhealer + '>' : ''}`,
+      `**6. ${CUSTOM_EMOJIS.DEBUFF} SHADOWCALLER (shadowcaller)**   ${contentState.roles.shadowcaller ? '➡️ <@' + contentState.roles.shadowcaller + '>' : ''}`,
+      `**7. ${CUSTOM_EMOJIS.DPS} DPS (dps1)**   ${contentState.roles.dps1 ? '➡️ <@' + contentState.roles.dps1 + '>' : ''}`,
+      `**8. ${CUSTOM_EMOJIS.DPS} DPS (dps2)**   ${contentState.roles.dps2 ? '➡️ <@' + contentState.roles.dps2 + '>' : ''}`,
+      `**9. ${CUSTOM_EMOJIS.DPS} DPS (dps3)**   ${contentState.roles.dps3 ? '➡️ <@' + contentState.roles.dps3 + '>' : ''}`,
+      `**10. ${CUSTOM_EMOJIS.DPS} DPS (dps4)**   ${contentState.roles.dps4 ? '➡️ <@' + contentState.roles.dps4 + '>' : ''}`
+    ];
+
+    const avadungeonRoles = ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'];
+    const filledSlots = avadungeonRoles.filter(key => contentState.roles[key] !== null).length;
+    const fillCount = contentState.fill.length;
+    const minSlotsBeforeFill = 8;
+    const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
+
+    let fillSection = '';
+    if (fillCount > 0) {
+      const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
+      fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
+      if (fillStatus === 'STANDBY') {
+        fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
+      }
+    }
+
+    let statusLine = `**Status:** ${filledSlots}/10`;
+    if (fillCount > 0 && fillStatus === 'STANDBY') {
+      statusLine += ` (${fillCount} in FILL standby)`;
+    }
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} Ava Dungeon Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `${statusLine}\n\n` +
+        roleLines.join('\n') +
+        fillSection
       );
   }
 
@@ -257,8 +306,8 @@ export const buildContentEmbed = () => {
 
 // Auto-assign fill players to empty slots (ROA/GCAMPS only)
 export async function autoAssignFillPlayers(client) {
-  // Only for ROA/GCAMPS (fixed slots)
-  if (contentState.contentType !== 'roa' && contentState.contentType !== 'gcamps') {
+  // Only for ROA/GCAMPS/AVADUNGEON (fixed slots)
+  if (contentState.contentType !== 'roa' && contentState.contentType !== 'gcamps' && contentState.contentType !== 'avadungeon') {
     return;
   }
 
@@ -268,10 +317,14 @@ export async function autoAssignFillPlayers(client) {
     roleKeys = ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'];
     totalSlots = 7;
     minSlotsBeforeFill = 6;
-  } else { // gcamps
+  } else if (contentState.contentType === 'gcamps') {
     roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'];
     totalSlots = 5;
     minSlotsBeforeFill = 4;
+  } else { // avadungeon
+    roleKeys = ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'];
+    totalSlots = 10;
+    minSlotsBeforeFill = 8;
   }
 
   // Count how many slots are currently filled (not null)

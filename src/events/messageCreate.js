@@ -20,8 +20,8 @@ export async function handleMessageCreate(message, client) {
     if (/^x\s+cancel$/i.test(content)) {
       let foundRole = false;
 
-      // For ROA/GCAMPS/Tracking (fixed slots)
-      if (contentType === 'roa' || contentType === 'gcamps' || contentType === 'tracking') {
+      // For ROA/GCAMPS/Tracking/Avadungeon (fixed slots)
+      if (contentType === 'roa' || contentType === 'gcamps' || contentType === 'tracking' || contentType === 'avadungeon') {
         for (const [roleKey, userId] of Object.entries(contentState.roles)) {
           if (userId === message.author.id) {
             contentState.roles[roleKey] = null;
@@ -72,11 +72,11 @@ export async function handleMessageCreate(message, client) {
       return;
     }
     
-    // Check for "x fill" command (ROA/GCAMPS only)
+    // Check for "x fill" command (ROA/GCAMPS/AVADUNGEON only)
     if (/^x\s+fill$/i.test(content)) {
-      // Only for ROA/GCAMPS
-      if (contentType !== 'roa' && contentType !== 'gcamps') {
-        await message.reply('❌ Fill is only available for ROA and Group Camps.');
+      // Only for ROA/GCAMPS/AVADUNGEON
+      if (contentType !== 'roa' && contentType !== 'gcamps' && contentType !== 'avadungeon') {
+        await message.reply('❌ Fill is only available for ROA, Group Camps, and Ava Dungeon.');
         return;
       }
 
@@ -226,6 +226,77 @@ export async function handleMessageCreate(message, client) {
       }
 
       if (assignedRole) {
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
+    }
+
+    // === AVADUNGEON - Fixed slot assignment ===
+    if (contentType === 'avadungeon') {
+      const rolePatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        offtank: /^x\s+(offtank|ot|off-tank)$/i,
+        stun: /^x\s+(stun|s)$/i,
+        mainhealer: /^x\s+(mainhealer|mh|main|mainheal)$/i,
+        partyhealer: /^x\s+(partyhealer|ph|party|partyheal)$/i,
+        shadowcaller: /^x\s+(shadowcaller|sc|shadow)$/i,
+        dps1: /^x\s+(dps1|dps)$/i,
+        dps2: /^x\s+(dps2)$/i,
+        dps3: /^x\s+(dps3)$/i,
+        dps4: /^x\s+(dps4)$/i
+      };
+
+      let assignedRole = null;
+
+      for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+        if (pattern.test(content)) {
+          // Check if role is already taken by someone else
+          if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+            await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
+            return;
+          }
+
+          // If user already has this role, ignore
+          if (contentState.roles[roleKey] === message.author.id) {
+            await message.react('ℹ️');
+            return;
+          }
+
+          // Remove user from any other role they currently have
+          for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
+            if (existingUserId === message.author.id) {
+              contentState.roles[existingRoleKey] = null;
+            }
+          }
+
+          // Remove user from fill list if they were in it
+          const fillIndex = contentState.fill.indexOf(message.author.id);
+          if (fillIndex > -1) {
+            contentState.fill.splice(fillIndex, 1);
+          }
+
+          // Assign the new role
+          contentState.roles[roleKey] = message.author.id;
+          assignedRole = roleKey;
+          break;
+        }
+      }
+
+      if (assignedRole) {
+        await autoAssignFillPlayers(client);
+
         try {
           const embed = buildContentEmbed();
           await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
