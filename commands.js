@@ -56,7 +56,8 @@ const CONTENT_COMMAND = {
             { name: 'CTA', value: 'cta' },
             { name: 'GCAMPS', value: 'gcamps' },
             { name: 'FF', value: 'ff' },
-            { name: 'Tracking', value: 'tracking' }
+            { name: 'Tracking', value: 'tracking' },
+            { name: 'Ava Dungeon', value: 'avadungeon' }
           ],
         },
         {
