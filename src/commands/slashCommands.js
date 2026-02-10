@@ -196,7 +196,7 @@ export async function handleSlashCommands(req, res, client) {
       contentState.demassNotice = demassNotice;
       contentState.targetCount = targetCount;
 
-      // Reset roles (for ROA/GCAMPS/Tracking)
+      // Reset roles (for ROA/GCAMPS/Tracking/Avadungeon)
       contentState.roles = {
         tank: null,
         heal: null,
@@ -208,7 +208,16 @@ export async function handleSlashCommands(req, res, client) {
         badon: null,
         dpair: null,
         hpcut: null,
-        flexdps: null
+        flexdps: null,
+        // Avadungeon roles
+        offtank: null,
+        stun: null,
+        mainhealer: null,
+        partyhealer: null,
+        dps1: null,
+        dps2: null,
+        dps3: null,
+        dps4: null
       };
 
       // Reset categories (for CTA/FF)
@@ -280,11 +289,32 @@ export async function handleSlashCommands(req, res, client) {
         console.error('   ❌ Error creating thread:', err);
         contentState.active = false;
 
-        // Follow up with error message
+        // Follow up with error message with more details
+        let errorMsg = '❌ Failed to create content thread.';
+        
+        // Try to parse the Discord API error
+        try {
+          const errorData = JSON.parse(err.message);
+          if (errorData.message) {
+            if (errorData.message.includes('Missing Permissions') || errorData.code === 50013) {
+              errorMsg += '\n**Reason:** Bot lacks permissions in this channel.';
+            } else if (errorData.message.includes('Invalid Form Body') || errorData.code === 50035) {
+              errorMsg += '\n**Reason:** Threads cannot be created in this channel type. Try using a regular text channel.';
+            } else if (errorData.code === 160004) {
+              errorMsg += '\n**Reason:** This channel has reached the maximum number of active threads.';
+            } else {
+              errorMsg += `\n**Reason:** ${errorData.message}`;
+            }
+          }
+        } catch (parseErr) {
+          // If we can't parse it, use the original error message
+          errorMsg += `\n**Error:** ${err.message}`;
+        }
+        
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: '❌ Failed to create content thread.',
+            content: errorMsg,
             flags: 64
           },
         });
@@ -312,6 +342,7 @@ export async function handleSlashCommands(req, res, client) {
         'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
         'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
         'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
+        'avadungeon': ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
         'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
         'ff': ['tank', 'heal', 'dps']
       };
@@ -391,6 +422,7 @@ export async function handleSlashCommands(req, res, client) {
         'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
         'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
         'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
+        'avadungeon': ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
         'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
         'ff': ['tank', 'heal', 'dps']
       };

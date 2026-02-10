@@ -15,6 +15,7 @@ export const contentState = {
   // For ROA/GCAMPS/AVADUNGEON (fixed slots)
   // ROA uses: tank, heal, mp, mp2, shadowcaller, blazing, flex (7 slots)
   // GCAMPS uses: tank, heal, shadowcaller, blazing, badon (5 slots)
+  // TRACKING uses: tank, heal, dpair, hpcut, flexdps (5 slots)
   // AVADUNGEON uses: tank, offtank, stun, mainhealer, partyhealer, shadowcaller, dps1, dps2, dps3, dps4 (10 slots)
   roles: {
     tank: null,
@@ -29,6 +30,9 @@ export const contentState = {
     blazing: null,
     flex: null,
     badon: null,
+    dpair: null,
+    hpcut: null,
+    flexdps: null,
     dps1: null,
     dps2: null,
     dps3: null,
