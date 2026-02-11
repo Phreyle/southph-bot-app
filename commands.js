@@ -628,7 +628,7 @@ const TICKET_COMMAND = {
       type: 1, // SUB_COMMAND
       name: 'panel',
       description: 'Send the apply panel with button to current channel',
-      options: [UNREGISTER_COMMAND, FORCEUNREGISTER_COMMAND, 
+      options: [
         {
           type: 3,
           name: 'panel_id',

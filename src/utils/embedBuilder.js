@@ -36,6 +36,7 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
   description += `• \`/bank active\` or \`${prefix}bank active\` - List all bank users\n`;
   description += `• \`/register <region> <ign>\` or \`${prefix}register <region> <ign>\` - Register your Albion character\n`;
   description += `• \`/unregister\` or \`${prefix}unregister\` - Unregister your character\n`;
+  description += `• \`/config view\` or \`${prefix}config\` - View guild verification settings\n`;
   description += `• In content threads: \`x [role]\` - Claim a role (tank, heal, etc.)\n`;
   description += `• In content threads: \`x fill\` - Sign up to fill any slot\n\n`;
 
@@ -66,7 +67,6 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
     description += `• \`/set register-role @role\` - Set verified member role\n`;
     description += `• \`/set guild-tag <tag>\` - Set guild tag for nicknames\n`;
     description += `• \`/set nickname-format <format>\` - Set nickname format\n`;
-    description += `• \`/config view\` or \`${prefix}config\` - View Albion config\n`;
     description += `• \`/forceunregister <ign>\` or \`${prefix}forceunregister <ign>\` - Force unregister by IGN\n`;
     description += `• \`/purge confirm\` or \`${prefix}purge confirm\` - Remove invalid registrations\n`;
     description += `• \`/content create [type] [title] [zone] [tier] [time]\` - Create content callout\n`;
