@@ -504,6 +504,33 @@ const REGISTER_COMMAND = {
   contexts: [0]
 };
 
+// Albion user unregister command
+const UNREGISTER_COMMAND = {
+  name: 'unregister',
+  description: 'Unregister your Albion Online character',
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
+// Albion force unregister command (Admin only)
+const FORCEUNREGISTER_COMMAND = {
+  name: 'forceunregister',
+  description: 'Force unregister a player by IGN (Admin only)',
+  options: [
+    {
+      type: 3, // STRING
+      name: 'ign',
+      description: 'In-game name to unregister',
+      required: true
+    }
+  ],
+  default_member_permissions: '8', // Administrator only
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
 // Albion purge command (Admin only)
 const PURGE_COMMAND = {
   name: 'purge',
@@ -601,7 +628,7 @@ const TICKET_COMMAND = {
       type: 1, // SUB_COMMAND
       name: 'panel',
       description: 'Send the apply panel with button to current channel',
-      options: [
+      options: [UNREGISTER_COMMAND, FORCEUNREGISTER_COMMAND, 
         {
           type: 3,
           name: 'panel_id',

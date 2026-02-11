@@ -11,8 +11,8 @@ import {
   ticketHealthCommand 
 } from '../systems/ticket/ticket-commands.js';
 import { createApplyPanelMessage } from '../systems/ticket/ticket-system.js';
-import { registerUser, purgeUsers } from '../systems/albion/albion.js';
-import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig } from '../systems/albion/albion-db.js';
+import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUserByIGN } from '../systems/albion/albion-db.js';
 
 export async function handlePrefixCommands(message, command, args, prefix) {
   // !utc command
@@ -612,6 +612,97 @@ export async function handlePrefixCommands(message, command, args, prefix) {
     } catch (error) {
       console.error('Error in !register command:', error);
       await loadingMsg.edit('❌ An unexpected error occurred during registration.');
+    }
+    
+    return;
+  }
+
+  // !unregister command - Unregister user's character
+  if (command === 'unregister' || command === 'unreg') {
+    const loadingMsg = await message.reply('⏳ Processing your unregistration...');
+
+    try {
+      const result = await unregisterUser(message.guild, message.author.id);
+
+      if (!result.success) {
+        await loadingMsg.edit(`❌ ${result.message}`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('✅ Unregistered Successfully')
+        .setDescription(`You have been unregistered from the guild verification system.`)
+        .addFields(
+          { name: 'Previous IGN', value: result.data.ign, inline: true },
+          { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
+          { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
+        )
+        .setTimestamp();
+
+      await loadingMsg.edit({ content: null, embeds: [embed] });
+
+    } catch (error) {
+      console.error('Error in !unregister command:', error);
+      await loadingMsg.edit('❌ An unexpected error occurred during unregistration.');
+    }
+    
+    return;
+  }
+
+  // !forceunregister command - Force unregister by IGN (Admin only)
+  if (command === 'forceunregister' || command === 'forceunreg') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      await message.reply('❌ You need Administrator permission to use this command.');
+      return;
+    }
+
+    const ign = args.join(' ');
+
+    if (!ign) {
+      await message.reply(
+        `❌ Usage: \`${prefix}forceunregister <ign>\`\n` +
+        `**Example:** \`${prefix}forceunregister Phresh\``
+      );
+      return;
+    }
+
+    const loadingMsg = await message.reply('⏳ Finding and unregistering player...');
+
+    try {
+      // Find user by IGN
+      const userData = findAlbionUserByIGN(message.guild.id, ign);
+      
+      if (!userData) {
+        await loadingMsg.edit(`❌ No registration found for IGN: **${ign}**`);
+        return;
+      }
+
+      // Unregister the found user
+      const result = await unregisterUser(message.guild, userData.discordId);
+
+      if (!result.success) {
+        await loadingMsg.edit(`❌ Failed to unregister: ${result.message}`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFEE75C)
+        .setTitle('⚠️ Force Unregistered')
+        .setDescription(`Successfully force-unregistered player from the system.`)
+        .addFields(
+          { name: 'IGN', value: result.data.ign, inline: true },
+          { name: 'Discord User', value: `<@${userData.discordId}>`, inline: true },
+          { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
+          { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
+        )
+        .setTimestamp();
+
+      await loadingMsg.edit({ content: null, embeds: [embed] });
+
+    } catch (error) {
+      console.error('Error in !forceunregister command:', error);
+      await loadingMsg.edit('❌ An unexpected error occurred during force unregistration.');
     }
     
     return;

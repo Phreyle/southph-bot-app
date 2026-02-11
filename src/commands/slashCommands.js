@@ -10,8 +10,8 @@ import { contentState } from '../config/contentState.js';
 import { buildContentEmbed, autoAssignFillPlayers } from '../services/contentService.js';
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
-import { registerUser, purgeUsers } from '../systems/albion/albion.js';
-import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig } from '../systems/albion/albion-db.js';
+import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUserByIGN } from '../systems/albion/albion-db.js';
 
 export async function handleSlashCommands(req, res, client) {
   const { name } = req.body.data;
@@ -1923,6 +1923,186 @@ export async function handleSlashCommands(req, res, client) {
         method: 'PATCH',
         body: {
           content: '❌ An unexpected error occurred during registration.',
+          flags: 64
+        }
+      });
+    }
+    
+    return;
+  }
+
+  // "/unregister" command - Unregister user's character
+  if (name === 'unregister') {
+    console.log('🗑️ Executing /unregister command');
+    const guildId = req.body.guild_id;
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+
+    // Defer response
+    res.send({
+      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { flags: 64 }
+    });
+
+    try {
+      const guild = client.guilds.cache.get(guildId);
+      
+      if (!guild) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: '❌ Failed to fetch guild information.',
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Perform unregistration
+      const result = await unregisterUser(guild, userId);
+
+      if (!result.success) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: `❌ ${result.message}`,
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Success
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('✅ Unregistered Successfully')
+        .setDescription(`You have been unregistered from the guild verification system.`)
+        .addFields(
+          { name: 'Previous IGN', value: result.data.ign, inline: true },
+          { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
+          { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
+        )
+        .setTimestamp();
+
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in /unregister command:', error);
+      
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          content: '❌ An unexpected error occurred during unregistration.',
+          flags: 64
+        }
+      });
+    }
+    
+    return;
+  }
+
+  // "/forceunregister" command - Force unregister by IGN (Admin only)
+  if (name === 'forceunregister') {
+    console.log('⚠️ Executing /forceunregister command');
+    const member = req.body.member;
+    const guildId = req.body.guild_id;
+    const ign = req.body.data.options[0].value;
+
+    // Check for administrator permission
+    const isAdmin = member && member.permissions && 
+      (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator);
+    
+    if (!isAdmin) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ You need Administrator permission to use this command.',
+          flags: 64
+        },
+      });
+    }
+
+    // Defer response
+    res.send({
+      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { flags: 64 }
+    });
+
+    try {
+      const guild = client.guilds.cache.get(guildId);
+      
+      if (!guild) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: '❌ Failed to fetch guild information.',
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Find user by IGN
+      const userData = findAlbionUserByIGN(guildId, ign);
+      
+      if (!userData) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: `❌ No registration found for IGN: **${ign}**`,
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Unregister the found user
+      const result = await unregisterUser(guild, userData.discordId);
+
+      if (!result.success) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: `❌ Failed to unregister: ${result.message}`,
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Success
+      const embed = new EmbedBuilder()
+        .setColor(0xFEE75C)
+        .setTitle('⚠️ Force Unregistered')
+        .setDescription(`Successfully force-unregistered player from the system.`)
+        .addFields(
+          { name: 'IGN', value: result.data.ign, inline: true },
+          { name: 'Discord User', value: `<@${userData.discordId}>`, inline: true },
+          { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
+          { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
+        )
+        .setTimestamp();
+
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in /forceunregister command:', error);
+      
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          content: '❌ An unexpected error occurred during force unregistration.',
           flags: 64
         }
       });

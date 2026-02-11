@@ -149,6 +149,25 @@ export function getAllAlbionUsers(guildId) {
 }
 
 /**
+ * Find user by in-game name (case-insensitive)
+ * @param {string} guildId
+ * @param {string} ign
+ * @returns {Object|null} User data with discordId or null
+ */
+export function findAlbionUserByIGN(guildId, ign) {
+  const users = loadAlbionUsers(guildId);
+  const normalizedIgn = ign.toLowerCase();
+  
+  for (const [discordId, userData] of users.entries()) {
+    if (userData.ign.toLowerCase() === normalizedIgn) {
+      return userData;
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Check if configuration is complete
  * @param {Object} config
  * @returns {Object} { valid: boolean, missing: string[] }

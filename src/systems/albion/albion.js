@@ -10,7 +10,8 @@ import {
   saveAlbionUser, 
   removeAlbionUser,
   getAllAlbionUsers,
-  validateAlbionConfig 
+  validateAlbionConfig,
+  findAlbionUserByIGN
 } from './albion-db.js';
 
 /**
@@ -323,4 +324,67 @@ export function getUserInfo(guildId, discordId) {
  */
 export function getAllUsers(guildId) {
   return getAllAlbionUsers(guildId);
+}
+
+/**
+ * Unregister a user (remove registration, role, and reset nickname)
+ * @param {Object} guild - Discord guild object
+ * @param {string} discordId - Discord user ID
+ * @returns {Promise<Object>} Unregister result
+ */
+export async function unregisterUser(guild, discordId) {
+  const guildId = guild.id;
+  const config = loadAlbionConfig(guildId);
+  
+  // Get user data before removing
+  const userData = getAlbionUser(guildId, discordId);
+  
+  if (!userData) {
+    return {
+      success: false,
+      error: 'NOT_REGISTERED',
+      message: 'You are not registered in the system.'
+    };
+  }
+
+  // Remove from database
+  removeAlbionUser(guildId, discordId);
+
+  // Remove role if configured
+  let roleRemoved = false;
+  if (config.registerRoleId) {
+    try {
+      const member = await guild.members.fetch(discordId);
+      if (member) {
+        await member.roles.remove(config.registerRoleId);
+        roleRemoved = true;
+        console.log(`✅ Removed register role from ${discordId}`);
+      }
+    } catch (error) {
+      console.error('Error removing role:', error);
+    }
+  }
+
+  // Reset nickname
+  let nicknameReset = false;
+  try {
+    const member = await guild.members.fetch(discordId);
+    if (member) {
+      await member.setNickname(null);
+      nicknameReset = true;
+      console.log(`✅ Reset nickname for ${discordId}`);
+    }
+  } catch (error) {
+    console.error('Error resetting nickname:', error);
+  }
+
+  return {
+    success: true,
+    message: `Successfully unregistered ${userData.ign}.`,
+    data: {
+      ign: userData.ign,
+      roleRemoved,
+      nicknameReset
+    }
+  };
 }
