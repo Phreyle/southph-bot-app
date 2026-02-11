@@ -88,6 +88,16 @@ export async function registerUser(guild, discordId, region, ign) {
   const guildId = guild.id;
   const config = loadAlbionConfig(guildId);
   
+  // Check if user is already registered
+  const existingRegistration = getAlbionUser(guildId, discordId);
+  if (existingRegistration) {
+    return {
+      success: false,
+      error: 'ALREADY_REGISTERED',
+      message: `You are already registered as **${existingRegistration.ign}** in the ${existingRegistration.region} region.\n\nUse \`/unregister\` first if you want to register a different character.`
+    };
+  }
+  
   // Validate configuration
   const configValidation = validateAlbionConfig(config);
   if (!configValidation.valid) {
