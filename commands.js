@@ -385,6 +385,142 @@ const PERMS_COMMAND = {
   contexts: [0, 1, 2],
 };
 
+// Albion guild verification command (Admin only - SET subcommands)
+const SET_COMMAND = {
+  name: 'set',
+  description: 'Configure Albion guild verification settings (Admin only)',
+  options: [
+    {
+      type: 1, // SUB_COMMAND
+      name: 'guild',
+      description: 'Set the Albion guild and region',
+      options: [
+        {
+          type: 3, // STRING
+          name: 'region',
+          description: 'Albion server region',
+          required: true,
+          choices: [
+            { name: 'Americas', value: 'americas' },
+            { name: 'Europe', value: 'europe' },
+            { name: 'Asia', value: 'asia' }
+          ]
+        },
+        {
+          type: 3,
+          name: 'guild_name',
+          description: 'Your guild name in Albion Online',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'register-role',
+      description: 'Set the role assigned to verified members',
+      options: [
+        {
+          type: 8, // ROLE
+          name: 'role',
+          description: 'Role to assign to registered members',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'guild-tag',
+      description: 'Set the guild tag for nicknames',
+      options: [
+        {
+          type: 3,
+          name: 'tag',
+          description: 'Guild tag (e.g., SOUTH)',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'nickname-format',
+      description: 'Set nickname format ({ign}, {tag}, {guild}, {region})',
+      options: [
+        {
+          type: 3,
+          name: 'format',
+          description: 'Nickname format (max 32 chars)',
+          required: true
+        }
+      ]
+    }
+  ],
+  default_member_permissions: '8', // Administrator only
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
+// Albion config view command
+const CONFIG_COMMAND = {
+  name: 'config',
+  description: 'View current Albion guild verification configuration',
+  options: [
+    {
+      type: 1, // SUB_COMMAND
+      name: 'view',
+      description: 'View current configuration'
+    }
+  ],
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
+// Albion user registration command
+const REGISTER_COMMAND = {
+  name: 'register',
+  description: 'Register your Albion Online character',
+  options: [
+    {
+      type: 3, // STRING
+      name: 'region',
+      description: 'Your Albion server region',
+      required: true,
+      choices: [
+        { name: 'Americas', value: 'americas' },
+        { name: 'Europe', value: 'europe' },
+        { name: 'Asia', value: 'asia' }
+      ]
+    },
+    {
+      type: 3,
+      name: 'ign',
+      description: 'Your in-game name',
+      required: true
+    }
+  ],
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
+// Albion purge command (Admin only)
+const PURGE_COMMAND = {
+  name: 'purge',
+  description: 'Remove users no longer in the guild (Admin only)',
+  options: [
+    {
+      type: 1, // SUB_COMMAND
+      name: 'confirm',
+      description: 'Confirm and execute the purge'
+    }
+  ],
+  default_member_permissions: '8', // Administrator only
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
 // Ticket management command (Admin only)
 const TICKET_COMMAND = {
   name: 'ticket',
@@ -492,6 +628,6 @@ const TICKET_COMMAND = {
   contexts: [0],
 };
 
-const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND, TICKET_COMMAND];
+const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND, SET_COMMAND, CONFIG_COMMAND, REGISTER_COMMAND, PURGE_COMMAND, TICKET_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);

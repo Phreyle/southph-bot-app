@@ -10,6 +10,8 @@ import { contentState } from '../config/contentState.js';
 import { buildContentEmbed, autoAssignFillPlayers } from '../services/contentService.js';
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
+import { registerUser, purgeUsers } from '../systems/albion/albion.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig } from '../systems/albion/albion-db.js';
 
 export async function handleSlashCommands(req, res, client) {
   const { name } = req.body.data;
@@ -1658,6 +1660,366 @@ export async function handleSlashCommands(req, res, client) {
           flags: 64
         },
       });
+    }
+  }
+
+  // "/set" command - Configure Albion guild verification (Admin only)
+  if (name === 'set') {
+    console.log('⚙️ Executing /set command');
+    const member = req.body.member;
+    const guildId = req.body.guild_id;
+    const subcommand = req.body.data.options[0].name;
+
+    // Check for administrator permission
+    const isAdmin = member && member.permissions && 
+      (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator);
+    
+    if (!isAdmin) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ You need Administrator permission to use this command.',
+          flags: 64
+        },
+      });
+    }
+
+    const config = loadAlbionConfig(guildId);
+
+    // Subcommand: guild
+    if (subcommand === 'guild') {
+      const region = req.body.data.options[0].options[0].value;
+      const guildName = req.body.data.options[0].options[1].value;
+
+      config.albionRegion = region;
+      config.albionGuildName = guildName;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Guild Configuration Updated')
+        .addFields(
+          { name: 'Region', value: region.toUpperCase(), inline: true },
+          { name: 'Guild Name', value: guildName, inline: true }
+        )
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: register-role
+    if (subcommand === 'register-role') {
+      const roleId = req.body.data.options[0].options[0].value;
+
+      config.registerRoleId = roleId;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Register Role Updated')
+        .setDescription(`Verified members will receive <@&${roleId}>`)
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: guild-tag
+    if (subcommand === 'guild-tag') {
+      const tag = req.body.data.options[0].options[0].value;
+
+      config.guildTag = tag;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Guild Tag Updated')
+        .setDescription(`Guild tag set to: **${tag}**`)
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: nickname-format
+    if (subcommand === 'nickname-format') {
+      const format = req.body.data.options[0].options[0].value;
+
+      if (format.length > 32) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Nickname format is too long (max 32 characters).',
+            flags: 64
+          },
+        });
+      }
+
+      config.nicknameFormat = format;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Nickname Format Updated')
+        .setDescription(
+          `**Format:** ${format}\n\n` +
+          '**Available variables:**\n' +
+          '• `{ign}` - In-game name\n' +
+          '• `{tag}` - Guild tag\n' +
+          '• `{guild}` - Guild name\n' +
+          '• `{region}` - Region'
+        )
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+  }
+
+  // "/config" command - View Albion configuration
+  if (name === 'config') {
+    console.log('📋 Executing /config command');
+    const guildId = req.body.guild_id;
+    const subcommand = req.body.data.options[0].name;
+
+    if (subcommand === 'view') {
+      const config = loadAlbionConfig(guildId);
+      const validation = validateAlbionConfig(config);
+
+      const statusEmoji = validation.valid ? '✅' : '⚠️';
+      const statusText = validation.valid ? 'Complete' : `Incomplete (Missing: ${validation.missing.join(', ')})`;
+
+      const embed = new EmbedBuilder()
+        .setColor(validation.valid ? 0x57F287 : 0xFEE75C)
+        .setTitle('⚙️ Albion Guild Verification Configuration')
+        .addFields(
+          { name: 'Status', value: `${statusEmoji} ${statusText}`, inline: false },
+          { name: 'Region', value: config.albionRegion || '*Not set*', inline: true },
+          { name: 'Guild Name', value: config.albionGuildName || '*Not set*', inline: true },
+          { name: 'Register Role', value: config.registerRoleId ? `<@&${config.registerRoleId}>` : '*Not set*', inline: true },
+          { name: 'Guild Tag', value: config.guildTag || '*Not set*', inline: true },
+          { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false }
+        )
+        .setFooter({ text: 'Use /set to configure these settings' })
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+  }
+
+  // "/register" command - Register user's Albion character
+  if (name === 'register') {
+    console.log('📝 Executing /register command');
+    const guildId = req.body.guild_id;
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+    const region = req.body.data.options[0].value;
+    const ign = req.body.data.options[1].value;
+
+    // Defer response for API call
+    res.send({
+      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { flags: 64 }
+    });
+
+    try {
+      const guild = client.guilds.cache.get(guildId);
+      
+      if (!guild) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: '❌ Failed to fetch guild information.',
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Perform registration
+      const result = await registerUser(guild, userId, region, ign);
+
+      if (!result.success) {
+        let errorMessage = `❌ Registration failed: ${result.message}`;
+        
+        if (result.error === 'PLAYER_NOT_FOUND') {
+          errorMessage = `❌ Player **${ign}** not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Selected region is correct`;
+        } else if (result.error === 'NO_GUILD') {
+          errorMessage = `❌ Player **${ign}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
+        } else if (result.error === 'GUILD_MISMATCH') {
+          errorMessage = `❌ ${result.message}\n\nYou must be in the correct guild to register.`;
+        } else if (result.error === 'INCOMPLETE_CONFIG') {
+          errorMessage = `❌ ${result.message}`;
+        }
+
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: errorMessage,
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Success
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Registration Successful')
+        .setDescription(result.message)
+        .addFields(
+          { name: 'In-Game Name', value: result.data.ign, inline: true },
+          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Region', value: region.toUpperCase(), inline: true }
+        )
+        .setTimestamp();
+
+      if (result.data.roleAssigned) {
+        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+      }
+
+      if (result.data.nicknameApplied) {
+        embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      }
+
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in /register command:', error);
+      
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          content: '❌ An unexpected error occurred during registration.',
+          flags: 64
+        }
+      });
+    }
+    
+    return;
+  }
+
+  // "/purge" command - Remove users no longer in guild (Admin only)
+  if (name === 'purge') {
+    console.log('🗑️ Executing /purge command');
+    const member = req.body.member;
+    const guildId = req.body.guild_id;
+    const subcommand = req.body.data.options[0].name;
+
+    // Check for administrator permission
+    const isAdmin = member && member.permissions && 
+      (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator);
+    
+    if (!isAdmin) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ You need Administrator permission to use this command.',
+          flags: 64
+        },
+      });
+    }
+
+    if (subcommand === 'confirm') {
+      // Defer response - this will take time
+      res.send({
+        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { flags: 64 }
+      });
+
+      try {
+        const guild = client.guilds.cache.get(guildId);
+        
+        if (!guild) {
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: '❌ Failed to fetch guild information.',
+              flags: 64
+            }
+          });
+          return;
+        }
+
+        // Perform purge
+        const result = await purgeUsers(guild);
+
+        if (!result.success) {
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              content: `❌ Purge failed: ${result.message}`,
+              flags: 64
+            }
+          });
+          return;
+        }
+
+        // Build result embed
+        const embed = new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setTitle('🗑️ Purge Complete')
+          .addFields(
+            { name: 'Members Checked', value: String(result.checked), inline: true },
+            { name: 'Removed', value: String(result.removed), inline: true },
+            { name: 'Valid', value: String(result.valid), inline: true },
+            { name: 'Errors', value: String(result.errors), inline: true }
+          )
+          .setTimestamp();
+
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            embeds: [embed.toJSON()],
+            flags: 64
+          }
+        });
+
+      } catch (error) {
+        console.error('Error in /purge command:', error);
+        
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: '❌ An unexpected error occurred during purge.',
+            flags: 64
+          }
+        });
+      }
+      
+      return;
     }
   }
 

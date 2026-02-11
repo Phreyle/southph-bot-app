@@ -11,6 +11,8 @@ import {
   ticketHealthCommand 
 } from '../systems/ticket/ticket-commands.js';
 import { createApplyPanelMessage } from '../systems/ticket/ticket-system.js';
+import { registerUser, purgeUsers } from '../systems/albion/albion.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig } from '../systems/albion/albion-db.js';
 
 export async function handlePrefixCommands(message, command, args, prefix) {
   // !utc command
@@ -372,6 +374,294 @@ export async function handlePrefixCommands(message, command, args, prefix) {
     const panelMessage = createApplyPanelMessage();
     await message.channel.send(panelMessage);
     await message.reply('✅ Apply panel created!');
+    return;
+  }
+
+  // ==================== ALBION COMMANDS ====================
+
+  // !set command - Configure Albion guild verification (Admin only)
+  if (command === 'set') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      await message.reply('❌ You need Administrator permission to use this command.');
+      return;
+    }
+
+    const subcommand = args[0]?.toLowerCase();
+    const config = loadAlbionConfig(message.guild.id);
+
+    if (!subcommand) {
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('⚙️ Set Command Usage')
+        .setDescription(
+          `**Available subcommands:**\n` +
+          `\`${prefix}set guild <region> <guild_name>\` - Set region and guild\n` +
+          `\`${prefix}set register-role @role\` - Set verified member role\n` +
+          `\`${prefix}set guild-tag <tag>\` - Set guild tag\n` +
+          `\`${prefix}set nickname-format <format>\` - Set nickname format\n\n` +
+          `**Regions:** americas, europe, asia\n` +
+          `**Nickname variables:** {ign}, {tag}, {guild}, {region}`
+        );
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: guild
+    if (subcommand === 'guild') {
+      const region = args[1]?.toLowerCase();
+      const guildName = args.slice(2).join(' ');
+
+      if (!region || !guildName) {
+        await message.reply(`❌ Usage: \`${prefix}set guild <region> <guild_name>\`\nRegions: americas, europe, asia`);
+        return;
+      }
+
+      if (!['americas', 'europe', 'asia'].includes(region)) {
+        await message.reply('❌ Invalid region. Valid regions: americas, europe, asia');
+        return;
+      }
+
+      config.albionRegion = region;
+      config.albionGuildName = guildName;
+      saveAlbionConfig(message.guild.id, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Guild Configuration Updated')
+        .addFields(
+          { name: 'Region', value: region.toUpperCase(), inline: true },
+          { name: 'Guild Name', value: guildName, inline: true }
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: register-role
+    if (subcommand === 'register-role') {
+      const role = message.mentions.roles.first();
+
+      if (!role) {
+        await message.reply(`❌ Usage: \`${prefix}set register-role @role\``);
+        return;
+      }
+
+      config.registerRoleId = role.id;
+      saveAlbionConfig(message.guild.id, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Register Role Updated')
+        .setDescription(`Verified members will receive ${role}`)
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: guild-tag
+    if (subcommand === 'guild-tag') {
+      const tag = args[1];
+
+      if (!tag) {
+        await message.reply(`❌ Usage: \`${prefix}set guild-tag <tag>\``);
+        return;
+      }
+
+      config.guildTag = tag;
+      saveAlbionConfig(message.guild.id, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Guild Tag Updated')
+        .setDescription(`Guild tag set to: **${tag}**`)
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: nickname-format
+    if (subcommand === 'nickname-format') {
+      const format = args.slice(1).join(' ');
+
+      if (!format) {
+        await message.reply(`❌ Usage: \`${prefix}set nickname-format <format>\`\nExample: \`${prefix}set nickname-format {tag} {ign}\``);
+        return;
+      }
+
+      if (format.length > 32) {
+        await message.reply('❌ Nickname format is too long (max 32 characters).');
+        return;
+      }
+
+      config.nicknameFormat = format;
+      saveAlbionConfig(message.guild.id, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Nickname Format Updated')
+        .setDescription(
+          `**Format:** ${format}\n\n` +
+          '**Available variables:**\n' +
+          '• `{ign}` - In-game name\n' +
+          '• `{tag}` - Guild tag\n' +
+          '• `{guild}` - Guild name\n' +
+          '• `{region}` - Region'
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    await message.reply(`❌ Unknown subcommand. Use \`${prefix}set\` to see available options.`);
+    return;
+  }
+
+  // !config command - View Albion configuration
+  if (command === 'config') {
+    const config = loadAlbionConfig(message.guild.id);
+    const validation = validateAlbionConfig(config);
+
+    const statusEmoji = validation.valid ? '✅' : '⚠️';
+    const statusText = validation.valid ? 'Complete' : `Incomplete (Missing: ${validation.missing.join(', ')})`;
+
+    const embed = new EmbedBuilder()
+      .setColor(validation.valid ? 0x57F287 : 0xFEE75C)
+      .setTitle('⚙️ Albion Guild Verification Configuration')
+      .addFields(
+        { name: 'Status', value: `${statusEmoji} ${statusText}`, inline: false },
+        { name: 'Region', value: config.albionRegion || '*Not set*', inline: true },
+        { name: 'Guild Name', value: config.albionGuildName || '*Not set*', inline: true },
+        { name: 'Register Role', value: config.registerRoleId ? `<@&${config.registerRoleId}>` : '*Not set*', inline: true },
+        { name: 'Guild Tag', value: config.guildTag || '*Not set*', inline: true },
+        { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false }
+      )
+      .setFooter({ text: `Use ${prefix}set to configure these settings` })
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !register command - Register user's Albion character
+  if (command === 'register' || command === 'reg') {
+    const region = args[0]?.toLowerCase();
+    const ign = args.slice(1).join(' ');
+
+    if (!region || !ign) {
+      await message.reply(
+        `❌ Usage: \`${prefix}register <region> <ign>\`\n` +
+        `**Regions:** americas, europe, asia\n` +
+        `**Example:** \`${prefix}register americas MyCharName\``
+      );
+      return;
+    }
+
+    if (!['americas', 'europe', 'asia'].includes(region)) {
+      await message.reply('❌ Invalid region. Valid regions: americas, europe, asia');
+      return;
+    }
+
+    const loadingMsg = await message.reply('⏳ Verifying your character with Albion API...');
+
+    try {
+      const result = await registerUser(message.guild, message.author.id, region, ign);
+
+      if (!result.success) {
+        let errorMessage = `❌ Registration failed: ${result.message}`;
+        
+        if (result.error === 'PLAYER_NOT_FOUND') {
+          errorMessage = `❌ Player **${ign}** not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Selected region is correct`;
+        } else if (result.error === 'NO_GUILD') {
+          errorMessage = `❌ Player **${ign}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
+        } else if (result.error === 'GUILD_MISMATCH') {
+          errorMessage = `❌ ${result.message}\n\nYou must be in the correct guild to register.`;
+        } else if (result.error === 'INCOMPLETE_CONFIG') {
+          errorMessage = `❌ ${result.message}`;
+        }
+
+        await loadingMsg.edit(errorMessage);
+        return;
+      }
+
+      // Success
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Registration Successful')
+        .setDescription(result.message)
+        .addFields(
+          { name: 'In-Game Name', value: result.data.ign, inline: true },
+          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Region', value: region.toUpperCase(), inline: true }
+        )
+        .setTimestamp();
+
+      if (result.data.roleAssigned) {
+        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+      }
+
+      if (result.data.nicknameApplied) {
+        embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      }
+
+      await loadingMsg.edit({ content: null, embeds: [embed] });
+
+    } catch (error) {
+      console.error('Error in !register command:', error);
+      await loadingMsg.edit('❌ An unexpected error occurred during registration.');
+    }
+    
+    return;
+  }
+
+  // !purge command - Remove users no longer in guild (Admin only)
+  if (command === 'purge') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      await message.reply('❌ You need Administrator permission to use this command.');
+      return;
+    }
+
+    const subcommand = args[0]?.toLowerCase();
+
+    if (subcommand !== 'confirm') {
+      await message.reply(
+        `⚠️ **WARNING:** This will check all registered members and remove those no longer in the guild!\n\n` +
+        `To proceed, use: \`${prefix}purge confirm\``
+      );
+      return;
+    }
+
+    const loadingMsg = await message.reply('⏳ Starting purge... This may take a while.');
+
+    try {
+      const result = await purgeUsers(message.guild);
+
+      if (!result.success) {
+        await loadingMsg.edit(`❌ Purge failed: ${result.message}`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🗑️ Purge Complete')
+        .addFields(
+          { name: 'Members Checked', value: String(result.checked), inline: true },
+          { name: 'Removed', value: String(result.removed), inline: true },
+          { name: 'Valid', value: String(result.valid), inline: true },
+          { name: 'Errors', value: String(result.errors), inline: true }
+        )
+        .setTimestamp();
+
+      await loadingMsg.edit({ content: null, embeds: [embed] });
+
+    } catch (error) {
+      console.error('Error in !purge command:', error);
+      await loadingMsg.edit('❌ An unexpected error occurred during purge.');
+    }
+    
     return;
   }
 }
