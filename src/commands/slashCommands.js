@@ -358,6 +358,53 @@ export async function handleSlashCommands(req, res, client) {
         });
       }
 
+      // Handle category-based content types (CTA, FF)
+      if (contentState.contentType === 'cta' || contentState.contentType === 'ff') {
+        // Check if user is already in this category
+        if (contentState.categories[roleOption].includes(targetUserId)) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ <@${targetUserId}> is already in **${roleOption.toUpperCase()}** category!`,
+              flags: 64
+            },
+          });
+        }
+
+        // Add user to category
+        contentState.categories[roleOption].push(targetUserId);
+
+        const embed = buildContentEmbed();
+
+        // Update the original message
+        try {
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `✅ <@${targetUserId}> added to **${roleOption.toUpperCase()}** category`,
+              flags: 64
+            },
+          });
+        } catch (err) {
+          console.error('Error updating message:', err);
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Failed to update the content message.',
+              flags: 64
+            },
+          });
+        }
+      }
+
+      // Handle fixed-slot content types (ROA, GCAMPS, Tracking, Avadungeon)
       if (contentState.roles[roleOption]) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -416,6 +463,8 @@ export async function handleSlashCommands(req, res, client) {
       }
 
       const roleOption = req.body.data.options[0].options[0].value;
+      // For category-based content, we need the user parameter
+      const userOption = req.body.data.options[0].options.find(opt => opt.name === 'user')?.value;
 
       // Validate role for content type
       const validRoles = {
@@ -438,6 +487,65 @@ export async function handleSlashCommands(req, res, client) {
         });
       }
 
+      // Handle category-based content types (CTA, FF)
+      if (contentState.contentType === 'cta' || contentState.contentType === 'ff') {
+        // User parameter is required for category-based content
+        if (!userOption) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ For **${contentState.contentType.toUpperCase()}** content, you must specify which user to remove using the \`user\` parameter!`,
+              flags: 64
+            },
+          });
+        }
+
+        // Check if user exists in this category
+        const userIndex = contentState.categories[roleOption].indexOf(userOption);
+        if (userIndex === -1) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ <@${userOption}> is not in the **${roleOption.toUpperCase()}** category!`,
+              flags: 64
+            },
+          });
+        }
+
+        // Remove user from category
+        contentState.categories[roleOption].splice(userIndex, 1);
+
+        const embed = buildContentEmbed();
+
+        // Update the original message
+        try {
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()]
+            },
+          });
+
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `✅ Removed <@${userOption}> from **${roleOption.toUpperCase()}** category`,
+              flags: 64
+            },
+          });
+        } catch (err) {
+          console.error('Error updating message:', err);
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Failed to update the content message.',
+              flags: 64
+            },
+          });
+        }
+      }
+
+      // Handle fixed-slot content types (ROA, GCAMPS, Tracking, Avadungeon)
       if (!contentState.roles[roleOption]) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -448,6 +556,7 @@ export async function handleSlashCommands(req, res, client) {
         });
       }
 
+      const removedUserId = contentState.roles[roleOption];
       contentState.roles[roleOption] = null;
 
       // Check if we need to auto-assign fill players after removing user
@@ -467,7 +576,7 @@ export async function handleSlashCommands(req, res, client) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `✅ Removed user from **${roleOption.toUpperCase()}**`,
+            content: `✅ Removed <@${removedUserId}> from **${roleOption.toUpperCase()}**`,
             flags: 64
           },
         });
