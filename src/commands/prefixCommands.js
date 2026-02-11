@@ -575,6 +575,8 @@ export async function handlePrefixCommands(message, command, args, prefix) {
         
         if (result.error === 'ALREADY_REGISTERED') {
           errorMessage = `❌ ${result.message}`;
+        } else if (result.error === 'IGN_ALREADY_REGISTERED') {
+          errorMessage = `❌ ${result.message}`;
         } else if (result.error === 'PLAYER_NOT_FOUND') {
           errorMessage = `❌ Player **${ign}** not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Selected region is correct`;
         } else if (result.error === 'NO_GUILD') {

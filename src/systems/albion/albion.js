@@ -97,6 +97,16 @@ export async function registerUser(guild, discordId, region, ign) {
       message: `You are already registered as **${existingRegistration.ign}** in the ${existingRegistration.region} region.\n\nUse \`/unregister\` first if you want to register a different character.`
     };
   }
+
+  // Check if IGN is already registered by another user
+  const existingIGN = findAlbionUserByIGN(guildId, ign);
+  if (existingIGN) {
+    return {
+      success: false,
+      error: 'IGN_ALREADY_REGISTERED',
+      message: `The in-game name **${ign}** is already registered by another Discord user.\n\nIf this is your character, ask an admin to use \`/forceunregister ${ign}\` to remove the old registration first.`
+    };
+  }
   
   // Validate configuration
   const configValidation = validateAlbionConfig(config);
