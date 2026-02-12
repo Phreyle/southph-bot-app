@@ -13,6 +13,7 @@ import {
 import { createApplyPanelMessage } from '../systems/ticket/ticket-system.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
 import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUserByIGN } from '../systems/albion/albion-db.js';
+import axios from 'axios';
 
 export async function handlePrefixCommands(message, command, args, prefix) {
   // !utc command
@@ -28,6 +29,141 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       .setDescription(`⏰ UTC Time Now: **${utcTime}**`);
 
     await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !info command - Search for Albion Online player across all regions
+  if (command === 'info') {
+    const playerName = args.join(' ');
+
+    if (!playerName) {
+      await message.reply(`❌ Usage: \`${prefix}info <player_name>\``);
+      return;
+    }
+
+    const loadingMsg = await message.reply('⏳ Searching for player across all regions...');
+
+    // Define the three regions
+    const regions = [
+      { name: 'Americas', baseUrl: 'https://gameinfo.albiononline.com/api/gameinfo' },
+      { name: 'Europe', baseUrl: 'https://gameinfo-ams.albiononline.com/api/gameinfo' },
+      { name: 'Asia', baseUrl: 'https://gameinfo-sgp.albiononline.com/api/gameinfo' }
+    ];
+
+    try {
+      // Search for player across all regions
+      const searchPromises = regions.map(async (region) => {
+        try {
+          const searchResponse = await axios.get(`${region.baseUrl}/search?q=${encodeURIComponent(playerName)}`, {
+            timeout: 5000
+          });
+
+          const players = searchResponse.data.players || [];
+          if (players.length === 0) {
+            return { region: region.name, players: [] };
+          }
+
+          // Find all exact matches (case-insensitive) - limit to 5
+          const exactMatches = players.filter(p => p.Name.toLowerCase() === playerName.toLowerCase()).slice(0, 5);
+          
+          if (exactMatches.length === 0) {
+            return { region: region.name, players: [] };
+          }
+
+          // Fetch detailed info for all exact matches
+          const detailedPlayers = await Promise.all(
+            exactMatches.map(async (player) => {
+              try {
+                const playerResponse = await axios.get(`${region.baseUrl}/players/${player.Id}`, {
+                  timeout: 5000
+                });
+                return playerResponse.data;
+              } catch (error) {
+                return null;
+              }
+            })
+          );
+
+          return {
+            region: region.name,
+            players: detailedPlayers.filter(p => p !== null)
+          };
+        } catch (error) {
+          // If player not found or error in this region, return empty
+          return { region: region.name, players: [] };
+        }
+      });
+
+      const results = await Promise.all(searchPromises);
+      const allFoundPlayers = results.flatMap(result => 
+        result.players.map(player => ({ region: result.region, data: player }))
+      );
+
+      if (allFoundPlayers.length === 0) {
+        await loadingMsg.edit(`❌ Player **${playerName}** not found in any region.`);
+        return;
+      }
+
+      // Build embed with player info from all regions
+      const embed = new EmbedBuilder()
+        .setColor(0xF0B900)
+        .setTitle(`🔍 Player Search: ${playerName}`)
+        .setTimestamp();
+
+      if (allFoundPlayers.length > 1) {
+        embed.setDescription(`Found **${allFoundPlayers.length}** players with this name across regions.`);
+      }
+
+      allFoundPlayers.forEach((playerInfo, index) => {
+        const player = playerInfo.data;
+        const region = playerInfo.region;
+
+        let fieldValue = `**Player ID:** ${player.Id}\n`;
+        
+        if (player.GuildId && player.GuildName) {
+          fieldValue += `**Guild:** ${player.GuildName}\n`;
+        } else {
+          fieldValue += `**Guild:** None\n`;
+        }
+
+        if (player.AllianceId && player.AllianceName) {
+          fieldValue += `**Alliance:** ${player.AllianceName}\n`;
+        } else {
+          fieldValue += `**Alliance:** None\n`;
+        }
+
+        if (player.KillFame !== undefined) {
+          fieldValue += `**Kill Fame:** ${player.KillFame.toLocaleString()}\n`;
+        }
+
+        if (player.DeathFame !== undefined) {
+          fieldValue += `**Death Fame:** ${player.DeathFame.toLocaleString()}\n`;
+        }
+
+        if (player.LifetimeStatistics) {
+          const stats = player.LifetimeStatistics;
+          if (stats.PvE && stats.PvE.Total) {
+            fieldValue += `**PvE Fame:** ${stats.PvE.Total.toLocaleString()}\n`;
+          }
+        }
+
+        const fieldName = allFoundPlayers.length > 1 
+          ? `${index + 1}. 📍 ${region} - ${player.Name}`
+          : `📍 ${region}`;
+
+        embed.addFields({
+          name: fieldName,
+          value: fieldValue,
+          inline: false
+        });
+      });
+
+      await loadingMsg.edit({ content: '', embeds: [embed] });
+
+    } catch (error) {
+      console.error('Error fetching player info:', error);
+      await loadingMsg.edit('❌ An error occurred while fetching player information. Please try again later.');
+    }
     return;
   }
 

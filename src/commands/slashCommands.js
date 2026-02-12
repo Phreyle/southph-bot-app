@@ -57,32 +57,46 @@ export async function handleSlashCommands(req, res, client) {
 
           const players = searchResponse.data.players || [];
           if (players.length === 0) {
-            return null;
+            return { region: region.name, players: [] };
           }
 
-          // Find exact match (case-insensitive)
-          const exactMatch = players.find(p => p.Name.toLowerCase() === playerName.toLowerCase());
-          const playerId = exactMatch ? exactMatch.Id : players[0].Id;
+          // Find all exact matches (case-insensitive) - limit to 5
+          const exactMatches = players.filter(p => p.Name.toLowerCase() === playerName.toLowerCase()).slice(0, 5);
+          
+          if (exactMatches.length === 0) {
+            return { region: region.name, players: [] };
+          }
 
-          // Fetch detailed player info
-          const playerResponse = await axios.get(`${region.baseUrl}/players/${playerId}`, {
-            timeout: 5000
-          });
+          // Fetch detailed info for all exact matches
+          const detailedPlayers = await Promise.all(
+            exactMatches.map(async (player) => {
+              try {
+                const playerResponse = await axios.get(`${region.baseUrl}/players/${player.Id}`, {
+                  timeout: 5000
+                });
+                return playerResponse.data;
+              } catch (error) {
+                return null;
+              }
+            })
+          );
 
           return {
             region: region.name,
-            data: playerResponse.data
+            players: detailedPlayers.filter(p => p !== null)
           };
         } catch (error) {
-          // If player not found or error in this region, return null
-          return null;
+          // If player not found or error in this region, return empty
+          return { region: region.name, players: [] };
         }
       });
 
       const results = await Promise.all(searchPromises);
-      const foundPlayers = results.filter(result => result !== null);
+      const allFoundPlayers = results.flatMap(result => 
+        result.players.map(player => ({ region: result.region, data: player }))
+      );
 
-      if (foundPlayers.length === 0) {
+      if (allFoundPlayers.length === 0) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -98,7 +112,11 @@ export async function handleSlashCommands(req, res, client) {
         .setTitle(`🔍 Player Search: ${playerName}`)
         .setTimestamp();
 
-      foundPlayers.forEach((playerInfo) => {
+      if (allFoundPlayers.length > 1) {
+        embed.setDescription(`Found **${allFoundPlayers.length}** players with this name across regions.`);
+      }
+
+      allFoundPlayers.forEach((playerInfo, index) => {
         const player = playerInfo.data;
         const region = playerInfo.region;
 
@@ -131,8 +149,12 @@ export async function handleSlashCommands(req, res, client) {
           }
         }
 
+        const fieldName = allFoundPlayers.length > 1 
+          ? `${index + 1}. 📍 ${region} - ${player.Name}`
+          : `📍 ${region}`;
+
         embed.addFields({
-          name: `📍 ${region}`,
+          name: fieldName,
           value: fieldValue,
           inline: false
         });
