@@ -346,6 +346,7 @@ const PERMS_COMMAND = {
           choices: [
             { name: 'Bank Admin', value: 'bank' },
             { name: 'CTA Regear', value: 'cta' },
+            { name: 'Content Admin', value: 'content' },
           ],
         },
         {
@@ -369,6 +370,7 @@ const PERMS_COMMAND = {
           choices: [
             { name: 'Bank Admin', value: 'bank' },
             { name: 'CTA Regear', value: 'cta' },
+            { name: 'Content Admin', value: 'content' },
           ],
         },
         {

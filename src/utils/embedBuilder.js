@@ -19,6 +19,10 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
     ? hasPermissionSlash(member, 'ctaRegearRoles', guildId)
     : hasPermission(member, 'ctaRegearRoles');
 
+  const hasContentPerms = isSlashCommand 
+    ? hasPermissionSlash(member, 'contentAdminRoles', guildId)
+    : hasPermission(member, 'contentAdminRoles');
+
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle('📖 South PH Bot - Command Help')
@@ -56,23 +60,28 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
     description += `• \`/regear close\` - Close and lock the current regear thread\n\n`;
   }
 
+  // Content Admin Commands
+  if (hasContentPerms || isAdmin) {
+    description += `**🎮 Content Admin Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
+    description += `• \`/content create [type] [title] [zone] [tier] [time]\` - Create content callout\n`;
+    description += `• \`/content reset\` - Reset content callout\n`;
+    description += `• \`/content adduser @user [role]\` - Add user to content role\n`;
+    description += `• \`/content removeuser [role]\` - Remove user from content role\n\n`;
+  }
+
   // Full Admin Commands (Only for Discord Administrators)
   if (isAdmin) {
     description += `**🛡️ Administrator Commands** (Discord Admin Only):\n`;
     description += `• \`${prefix}prefix <new>\` - Change bot prefix\n`;
     description += `• \`/perms list\` or \`${prefix}perms list\` - View role permissions\n`;
-    description += `• \`/perms add <bank|cta> @role\` - Grant role permission\n`;
-    description += `• \`/perms remove <bank|cta> @role\` - Revoke role permission\n`;
+    description += `• \`/perms add <bank|cta|content> @role\` - Grant role permission\n`;
+    description += `• \`/perms remove <bank|cta|content> @role\` - Revoke role permission\n`;
     description += `• \`/set guild <region> <guild_name>\` - Configure Albion guild\n`;
     description += `• \`/set register-role @role\` - Set verified member role\n`;
     description += `• \`/set guild-tag <tag>\` - Set guild tag for nicknames\n`;
     description += `• \`/set nickname-format <format>\` - Set nickname format\n`;
     description += `• \`/forceunregister <ign>\` or \`${prefix}forceunregister <ign>\` - Force unregister by IGN\n`;
     description += `• \`/purge confirm\` or \`${prefix}purge confirm\` - Remove invalid registrations\n`;
-    description += `• \`/content create [type] [title] [zone] [tier] [time]\` - Create content callout\n`;
-    description += `• \`/content reset\` - Reset content callout\n`;
-    description += `• \`/content adduser @user [role]\` - Add user to content role\n`;
-    description += `• \`/content removeuser [role]\` - Remove user from content role\n`;
     description += `• \`/ticket setup\` - Setup a ticket panel\n`;
     description += `• \`/ticket list\` - List all ticket panels\n`;
     description += `• \`/ticket panel [panel_id]\` - Send apply button panel\n`;
@@ -82,7 +91,7 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
   }
 
   // Show permission status if user has special permissions
-  if (!isAdmin && (hasBankPerms || hasCtaPerms)) {
+  if (!isAdmin && (hasBankPerms || hasCtaPerms || hasContentPerms)) {
     description += `*You have special permissions granted via role assignment.*\n`;
   }
 
@@ -109,6 +118,10 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
   const hasCtaPerms = isSlashCommand 
     ? hasPermissionSlash(member, 'ctaRegearRoles', guildId)
     : hasPermission(member, 'ctaRegearRoles');
+
+  const hasContentPerms = isSlashCommand 
+    ? hasPermissionSlash(member, 'contentAdminRoles', guildId)
+    : hasPermission(member, 'contentAdminRoles');
 
   const pages = [];
 
@@ -157,7 +170,19 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
     page2Desc += `• \`/regear create [cta|ff] [title] [time]\`\n`;
     page2Desc += `  Create a regear thread (CTA or FF)\n`;
     page2Desc += `• \`/regear close\`\n`;
-    page2Desc += `  Close and lock the current regear thread\n`;
+    page2Desc += `  Close and lock the current regear thread\n\n`;
+  }
+
+  if (hasContentPerms || isAdmin) {
+    page2Desc += `**🎮 Content Admin Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
+    page2Desc += `• \`/content create [type] [title] [zone] [tier] [time]\`\n`;
+    page2Desc += `  Create content callout (ROA, CTA, GCAMPS, FF, Tracking, Avadungeon)\n`;
+    page2Desc += `• \`/content reset\`\n`;
+    page2Desc += `  Reset content callout (allows creating a new one)\n`;
+    page2Desc += `• \`/content adduser @user [role]\`\n`;
+    page2Desc += `  Add user to content role slot\n`;
+    page2Desc += `• \`/content removeuser [role]\`\n`;
+    page2Desc += `  Remove user from content role slot\n`;
   }
 
   if (page2Desc) {
@@ -196,36 +221,10 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
       .setTimestamp();
     pages.push(page3);
 
-    // Page 4: Content Commands (Admin only)
+    // Page 4: Admin Content & Ticket Commands
     const page4 = new EmbedBuilder()
       .setColor(0x5865F2)
       .setTitle('📖 South PH Bot - Command Help (Page 4)')
-      .setDescription(
-        `**🎮 Content Commands** (Administrator Only):\n` +
-        `• \`/content create [type] [title] [zone] [tier] [time]\`\n` +
-        `  Create content callout (ROA, CTA, GCAMPS, FF, Tracking, Avadungeon)\n` +
-        `• \`/content reset\`\n` +
-        `  Reset content callout (allows creating a new one)\n` +
-        `• \`/content adduser @user [role]\`\n` +
-        `  Add user to content role slot\n` +
-        `• \`/content removeuser [role]\`\n` +
-        `  Remove user from content role slot\n\n` +
-        `**Content Types:**\n` +
-        `• **ROA** - Roads of Avalon (7 fixed roles + fill)\n` +
-        `• **CTA** - Crystal Territory Attack (categories: tank, heal, dps, support, dtank)\n` +
-        `• **GCAMPS** - Group Camps (5 fixed roles + fill)\n` +
-        `• **FF** - Faction Warfare (categories: tank, heal, dps)\n` +
-        `• **Tracking** - Crystal League Tracking (5 fixed roles + fill)\n` +
-        `• **Avadungeon** - Avalonian Dungeon (10 fixed roles + fill)\n`
-      )
-      .setFooter({ text: 'South PH - Albion Online Guild Bot' })
-      .setTimestamp();
-    pages.push(page4);
-
-    // Page 5: Ticket & Permission Commands (Admin only)
-    const page5 = new EmbedBuilder()
-      .setColor(0x5865F2)
-      .setTitle('📖 South PH Bot - Command Help (Page 5)')
       .setDescription(
         `**🎫 Ticket Commands** (Administrator Only):\n` +
         `• \`/ticket setup\`\n` +
@@ -240,19 +239,20 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
         `  View ticket statistics (total, open, closed, etc.)\n` +
         `• \`/ticket health\` or \`${prefix}tickethealth\`\n` +
         `  Run ticket system health check\n\n` +
-        `**🛡️ Permission Commands** (Administrator Only):\n` +
-        `• \`${prefix}prefix <new>\`\n` +
-        `  Change bot prefix\n` +
+        `**🔐 Permission Management** (Administrator Only):\n` +
         `• \`/perms list\` or \`${prefix}perms list\`\n` +
-        `  View role permissions\n` +
-        `• \`/perms add <bank|cta> @role\` or \`${prefix}perms add <bank|cta> @role\`\n` +
-        `  Grant role special permissions\n` +
-        `• \`/perms remove <bank|cta> @role\` or \`${prefix}perms remove <bank|cta> @role\`\n` +
-        `  Revoke role permissions\n`
+        `  View all role permissions\n` +
+        `• \`/perms add <bank|cta|content> @role\`\n` +
+        `  Grant role permission\n` +
+        `• \`/perms remove <bank|cta|content> @role\`\n` +
+        `  Revoke role permission\n\n` +
+        `**⚙️ Bot Configuration** (Administrator Only):\n` +
+        `• \`${prefix}prefix <new>\`\n` +
+        `  Change bot prefix\n`
       )
       .setFooter({ text: 'South PH - Albion Online Guild Bot' })
       .setTimestamp();
-    pages.push(page5);
+    pages.push(page4);
   } else {
     // For non-admin, adjust page numbers
     pages.forEach((page, index) => {

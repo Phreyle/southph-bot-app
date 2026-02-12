@@ -42,7 +42,7 @@ export function loadPermissions(guildId) {
   } catch (e) {
     console.error(`Error loading permissions for guild ${guildId}:`, e);
   }
-  return { bankAdminRoles: [], ctaRegearRoles: [] };
+  return { bankAdminRoles: [], ctaRegearRoles: [], contentAdminRoles: [] };
 }
 
 // Save per-guild permissions

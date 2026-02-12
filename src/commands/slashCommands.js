@@ -186,6 +186,20 @@ export async function handleSlashCommands(req, res, client) {
     console.log(`   Subcommand: ${subcommand}`);
     const context = req.body.context;
     const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+    const member = req.body.member;
+    const guildId = req.body.guild_id;
+
+    // Check Content Admin permission for create, reset, adduser, removeuser
+    if (['create', 'reset', 'adduser', 'removeuser'].includes(subcommand)) {
+      if (!hasPermissionSlash(member, 'contentAdminRoles', guildId)) {
+        return res.send({          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ You need Administrator permission or an authorized Content Admin role to use this command.',
+            flags: 64
+          },
+        });
+      }
+    }
 
     // Subcommand: create
     if (subcommand === 'create') {
@@ -1569,13 +1583,15 @@ export async function handleSlashCommands(req, res, client) {
       const permissions = loadPermissions(guildId);
       const bankRoles = permissions.bankAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
       const ctaRoles = permissions.ctaRegearRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
+      const contentRoles = permissions.contentAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
       
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🔐 Current Role Permissions')
         .addFields(
           { name: '💰 Bank Admin Roles', value: bankRoles, inline: false },
-          { name: '⚔️ CTA Regear Roles', value: ctaRoles, inline: false }
+          { name: '⚔️ CTA Regear Roles', value: ctaRoles, inline: false },
+          { name: '🎮 Content Admin Roles', value: contentRoles, inline: false }
         )
         .setFooter({ text: 'Administrators always have access to all commands' })
         .setTimestamp();
@@ -1603,6 +1619,9 @@ export async function handleSlashCommands(req, res, client) {
       } else if (permType === 'cta') {
         configKey = 'ctaRegearRoles';
         displayName = 'CTA Regear';
+      } else if (permType === 'content') {
+        configKey = 'contentAdminRoles';
+        displayName = 'Content Admin';
       } else {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1650,6 +1669,9 @@ export async function handleSlashCommands(req, res, client) {
       } else if (permType === 'cta') {
         configKey = 'ctaRegearRoles';
         displayName = 'CTA Regear';
+      } else if (permType === 'content') {
+        configKey = 'contentAdminRoles';
+        displayName = 'Content Admin';
       } else {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
