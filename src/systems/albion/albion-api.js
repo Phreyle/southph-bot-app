@@ -26,9 +26,10 @@ export function getRegionApiUrl(region) {
  * Fetch player information from Albion API
  * @param {string} region - Region (americas, europe, asia)
  * @param {string} playerName - Player's in-game name
+ * @param {Object} options - Additional options { returnMultiple: boolean }
  * @returns {Promise<Object>} Player data with Name, GuildName, GuildId
  */
-export async function fetchPlayerInfo(region, playerName) {
+export async function fetchPlayerInfo(region, playerName, options = {}) {
   const baseUrl = getRegionApiUrl(region);
   
   if (!baseUrl) {
@@ -50,9 +51,46 @@ export async function fetchPlayerInfo(region, playerName) {
       };
     }
 
-    // Find exact match (case-insensitive)
-    const exactMatch = players.find(p => p.Name.toLowerCase() === playerName.toLowerCase());
-    const playerId = exactMatch ? exactMatch.Id : players[0].Id;
+    // Find all exact matches (case-insensitive) - limit to 5 to prevent overwhelming
+    const exactMatches = players.filter(p => p.Name.toLowerCase() === playerName.toLowerCase()).slice(0, 5);
+    
+    // If returnMultiple is true and we have multiple exact matches, return all of them
+    if (options.returnMultiple && exactMatches.length > 1) {
+      // Fetch detailed info for each matching player
+      const detailedPlayers = await Promise.all(
+        exactMatches.map(async (player) => {
+          try {
+            const playerUrl = `${baseUrl}/players/${player.Id}`;
+            const playerResponse = await axios.get(playerUrl, { timeout: 10000 });
+            const playerData = playerResponse.data;
+            return {
+              Id: player.Id,
+              Name: playerData.Name,
+              GuildName: playerData.GuildName || null,
+              GuildId: playerData.GuildId || null,
+              AllianceName: playerData.AllianceName || null,
+              AllianceId: playerData.AllianceId || null
+            };
+          } catch (error) {
+            console.error(`Error fetching player ${player.Id}:`, error);
+            return null;
+          }
+        })
+      );
+
+      // Filter out any failed fetches
+      const validPlayers = detailedPlayers.filter(p => p !== null);
+
+      return {
+        success: true,
+        multipleMatches: true,
+        count: validPlayers.length,
+        players: validPlayers
+      };
+    }
+
+    // Default behavior: return the first exact match or first result
+    const playerId = exactMatches.length > 0 ? exactMatches[0].Id : players[0].Id;
 
     // Fetch detailed player info
     const playerUrl = `${baseUrl}/players/${playerId}`;
@@ -63,6 +101,7 @@ export async function fetchPlayerInfo(region, playerName) {
     return {
       success: true,
       data: {
+        Id: playerId,
         Name: playerData.Name,
         GuildName: playerData.GuildName || null,
         GuildId: playerData.GuildId || null,
@@ -98,14 +137,94 @@ export async function fetchPlayerInfo(region, playerName) {
 }
 
 /**
+ * Fetch player information by Player ID from Albion API
+ * @param {string} region - Region (americas, europe, asia)
+ * @param {string} playerId - Player's unique ID
+ * @returns {Promise<Object>} Player data with Name, GuildName, GuildId
+ */
+export async function fetchPlayerInfoById(region, playerId) {
+  const baseUrl = getRegionApiUrl(region);
+  
+  if (!baseUrl) {
+    throw new Error(`Invalid region: ${region}. Valid regions: americas, europe, asia`);
+  }
+
+  try {
+    // Fetch player info directly by ID
+    const playerUrl = `${baseUrl}/players/${playerId}`;
+    const playerResponse = await axios.get(playerUrl, { timeout: 10000 });
+    
+    const playerData = playerResponse.data;
+    
+    return {
+      success: true,
+      data: {
+        Id: playerId,
+        Name: playerData.Name,
+        GuildName: playerData.GuildName || null,
+        GuildId: playerData.GuildId || null,
+        AllianceName: playerData.AllianceName || null,
+        AllianceId: playerData.AllianceId || null
+      }
+    };
+    
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      return {
+        success: false,
+        error: 'PLAYER_NOT_FOUND',
+        message: `Player with ID "${playerId}" not found in ${region} region.`
+      };
+    }
+    
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      return {
+        success: false,
+        error: 'API_TIMEOUT',
+        message: 'Albion API request timed out. Please try again.'
+      };
+    }
+
+    console.error('Albion API Error:', error);
+    return {
+      success: false,
+      error: 'API_ERROR',
+      message: 'Failed to fetch player information from Albion API.'
+    };
+  }
+}
+
+/**
  * Validate if player is in the specified guild
  * @param {string} region - Region (americas, europe, asia)
  * @param {string} playerName - Player's in-game name
  * @param {string} expectedGuildName - Expected guild name
+ * @param {string} playerId - Optional Player ID for exact match
  * @returns {Promise<Object>} Validation result
  */
-export async function validatePlayerGuild(region, playerName, expectedGuildName) {
-  const result = await fetchPlayerInfo(region, playerName);
+export async function validatePlayerGuild(region, playerName, expectedGuildName, playerId = null) {
+  let result;
+  
+  // If playerId is provided, use it directly
+  if (playerId) {
+    result = await fetchPlayerInfoById(region, playerId);
+  } else {
+    // First, check if there are multiple players with same name
+    const multiCheckResult = await fetchPlayerInfo(region, playerName, { returnMultiple: true });
+    
+    // If multiple matches found, return them for user selection
+    if (multiCheckResult.success && multiCheckResult.multipleMatches && multiCheckResult.count > 1) {
+      return {
+        success: false,
+        error: 'MULTIPLE_MATCHES',
+        message: `Found ${multiCheckResult.count} players with the name "${playerName}". Please specify which one:`,
+        players: multiCheckResult.players
+      };
+    }
+    
+    // Otherwise fetch normally
+    result = await fetchPlayerInfo(region, playerName);
+  }
   
   if (!result.success) {
     return result;
@@ -118,7 +237,7 @@ export async function validatePlayerGuild(region, playerName, expectedGuildName)
     return {
       success: false,
       error: 'NO_GUILD',
-      message: `Player "${playerName}" is not in any guild.`,
+      message: `Player "${playerData.Name}" is not in any guild.`,
       data: playerData
     };
   }
@@ -130,14 +249,25 @@ export async function validatePlayerGuild(region, playerName, expectedGuildName)
     return {
       success: false,
       error: 'GUILD_MISMATCH',
-      message: `Player "${playerName}" is in guild "${playerData.GuildName}", not "${expectedGuildName}".`,
+      message: `Player "${playerData.Name}" is in guild "${playerData.GuildName}", not "${expectedGuildName}".`,
       data: playerData
     };
   }
 
   return {
     success: true,
-    message: `Player "${playerName}" is verified in guild "${expectedGuildName}".`,
+    message: `Player "${playerData.Name}" is verified in guild "${expectedGuildName}".`,
     data: playerData
   };
+}
+
+/**
+ * Validate if player is in the specified guild using Player ID
+ * @param {string} region - Region (americas, europe, asia)
+ * @param {string} playerId - Player's unique ID
+ * @param {string} expectedGuildName - Expected guild name
+ * @returns {Promise<Object>} Validation result
+ */
+export async function validatePlayerGuildById(region, playerId, expectedGuildName) {
+  return validatePlayerGuild(region, null, expectedGuildName, playerId);
 }

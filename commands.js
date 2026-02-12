@@ -496,7 +496,13 @@ const REGISTER_COMMAND = {
       type: 3,
       name: 'ign',
       description: 'Your in-game name',
-      required: true
+      required: false
+    },
+    {
+      type: 3,
+      name: 'playerid',
+      description: 'Your Player ID (alternative to IGN, use if IGN has duplicates)',
+      required: false
     }
   ],
   type: 1,

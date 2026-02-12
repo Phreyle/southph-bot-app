@@ -1840,7 +1840,24 @@ export async function handleSlashCommands(req, res, client) {
     const guildId = req.body.guild_id;
     const userId = req.body.member?.user?.id || req.body.user?.id;
     const region = req.body.data.options[0].value;
-    const ign = req.body.data.options[1].value;
+    
+    // Get IGN and PlayerID options
+    const ignOption = req.body.data.options.find(opt => opt.name === 'ign');
+    const playerIdOption = req.body.data.options.find(opt => opt.name === 'playerid');
+    
+    const ign = ignOption?.value || null;
+    const playerId = playerIdOption?.value || null;
+
+    // Validate that at least one identifier is provided
+    if (!ign && !playerId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ You must provide either an **IGN** (in-game name) or a **Player ID**.',
+          flags: 64
+        }
+      });
+    }
 
     // Defer response for API call
     res.send({
@@ -1863,9 +1880,38 @@ export async function handleSlashCommands(req, res, client) {
       }
 
       // Perform registration
-      const result = await registerUser(guild, userId, region, ign);
+      const result = await registerUser(guild, userId, region, ign, playerId);
 
       if (!result.success) {
+        // Handle multiple matches
+        if (result.error === 'MULTIPLE_MATCHES') {
+          // Build embed showing all matching players
+          const embed = new EmbedBuilder()
+            .setColor(0xF0B900)
+            .setTitle('⚠️ Multiple Players Found')
+            .setDescription(result.message)
+            .setFooter({ text: 'Use /info to see detailed player information' });
+
+          result.players.forEach((player, index) => {
+            const guildInfo = player.GuildName ? `**Guild:** ${player.GuildName}` : '**Guild:** None';
+            const allianceInfo = player.AllianceName ? `\n**Alliance:** ${player.AllianceName}` : '';
+            embed.addFields({
+              name: `${index + 1}. ${player.Name}`,
+              value: `**Player ID:** ${player.Id}\n${guildInfo}${allianceInfo}\n\nTo register this character, use:\n\`/register region:${region} playerid:${player.Id}\``,
+              inline: false
+            });
+          });
+
+          await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()],
+              flags: 64
+            }
+          });
+          return;
+        }
+
         let errorMessage = `❌ Registration failed: ${result.message}`;
         
         if (result.error === 'ALREADY_REGISTERED') {
@@ -1873,9 +1919,11 @@ export async function handleSlashCommands(req, res, client) {
         } else if (result.error === 'IGN_ALREADY_REGISTERED') {
           errorMessage = `❌ ${result.message}`;
         } else if (result.error === 'PLAYER_NOT_FOUND') {
-          errorMessage = `❌ Player **${ign}** not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Selected region is correct`;
+          const identifier = playerId ? `Player ID **${playerId}**` : `Player **${ign}**`;
+          errorMessage = `❌ ${identifier} not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Player ID is correct\n• Selected region is correct`;
         } else if (result.error === 'NO_GUILD') {
-          errorMessage = `❌ Player **${ign}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
+          const playerName = result.data?.Name || ign || playerId;
+          errorMessage = `❌ Player **${playerName}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
         } else if (result.error === 'GUILD_MISMATCH') {
           errorMessage = `❌ ${result.message}\n\nYou must be in the correct guild to register.`;
         } else if (result.error === 'INCOMPLETE_CONFIG') {

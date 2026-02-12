@@ -81,10 +81,11 @@ function formatNickname(template, variables) {
  * @param {Object} guild - Discord guild object
  * @param {string} discordId - Discord user ID
  * @param {string} region - Albion region
- * @param {string} ign - In-game name
+ * @param {string} ign - In-game name (optional if playerId is provided)
+ * @param {string} playerId - Player ID (optional alternative to IGN)
  * @returns {Promise<Object>} Registration result
  */
-export async function registerUser(guild, discordId, region, ign) {
+export async function registerUser(guild, discordId, region, ign, playerId = null) {
   const guildId = guild.id;
   const config = loadAlbionConfig(guildId);
   
@@ -98,14 +99,16 @@ export async function registerUser(guild, discordId, region, ign) {
     };
   }
 
-  // Check if IGN is already registered by another user
-  const existingIGN = findAlbionUserByIGN(guildId, ign);
-  if (existingIGN) {
-    return {
-      success: false,
-      error: 'IGN_ALREADY_REGISTERED',
-      message: `The in-game name **${ign}** is already registered by another Discord user.\n\nIf this is your character, ask an admin to use \`/forceunregister ${ign}\` to remove the old registration first.`
-    };
+  // Check if IGN is already registered by another user (only if using IGN, not Player ID)
+  if (ign && !playerId) {
+    const existingIGN = findAlbionUserByIGN(guildId, ign);
+    if (existingIGN) {
+      return {
+        success: false,
+        error: 'IGN_ALREADY_REGISTERED',
+        message: `The in-game name **${ign}** is already registered by another Discord user.\n\nIf this is your character, ask an admin to use \`/forceunregister ${ign}\` to remove the old registration first.`
+      };
+    }
   }
   
   // Validate configuration
@@ -119,8 +122,9 @@ export async function registerUser(guild, discordId, region, ign) {
   }
 
   // Validate player guild membership
-  console.log(`🔍 Verifying player ${ign} in region ${region}...`);
-  const validation = await validatePlayerGuild(region, ign, config.albionGuildName);
+  const identifier = playerId || ign;
+  console.log(`🔍 Verifying player ${identifier} in region ${region}...`);
+  const validation = await validatePlayerGuild(region, ign, config.albionGuildName, playerId);
   
   if (!validation.success) {
     return validation;
@@ -130,10 +134,11 @@ export async function registerUser(guild, discordId, region, ign) {
   saveAlbionUser(guildId, discordId, {
     ign: validation.data.Name,
     region: region,
-    guild: validation.data.GuildName
+    guild: validation.data.GuildName,
+    playerId: validation.data.Id
   });
 
-  console.log(`✅ User ${discordId} registered as ${ign}`);
+  console.log(`✅ User ${discordId} registered as ${validation.data.Name}`);
 
   // Assign register role
   let roleAssigned = false;

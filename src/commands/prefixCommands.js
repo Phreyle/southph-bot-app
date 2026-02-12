@@ -571,6 +571,19 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       const result = await registerUser(message.guild, message.author.id, region, ign);
 
       if (!result.success) {
+        // Handle multiple matches
+        if (result.error === 'MULTIPLE_MATCHES') {
+          let matchesList = `⚠️ **${result.message}**\n\n`;
+          result.players.forEach((player, index) => {
+            const guildInfo = player.GuildName ? `Guild: ${player.GuildName}` : 'Guild: None';
+            matchesList += `${index + 1}. **${player.Name}** (Player ID: ${player.Id})\n   ${guildInfo}\n\n`;
+          });
+          matchesList += `To register using Player ID, use the slash command:\n\`/register region:${region} playerid:PLAYER_ID\``;
+          
+          await loadingMsg.edit(matchesList);
+          return;
+        }
+
         let errorMessage = `❌ Registration failed: ${result.message}`;
         
         if (result.error === 'ALREADY_REGISTERED') {

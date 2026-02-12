@@ -100,7 +100,7 @@ export function getAlbionUser(guildId, discordId) {
  * Register or update a user
  * @param {string} guildId
  * @param {string} discordId
- * @param {Object} userData - { ign, region, guild }
+ * @param {Object} userData - { ign, region, guild, playerId }
  */
 export function saveAlbionUser(guildId, discordId, userData) {
   const users = loadAlbionUsers(guildId);
@@ -113,6 +113,7 @@ export function saveAlbionUser(guildId, discordId, userData) {
     ign: userData.ign,
     region: userData.region,
     guild: userData.guild,
+    playerId: userData.playerId || null,
     registeredAt: existingUser?.registeredAt || now,
     lastVerified: now
   });
