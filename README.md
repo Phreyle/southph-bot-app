@@ -136,12 +136,13 @@ When admins post content, interact in the thread using:
 |---------|-------------|
 | `!prefix <new>` | Change the bot's prefix |
 | `/perms list` | View role permissions |
-| `/perms add <bank\|cta> @role` | Grant role permission |
-| `/perms remove <bank\|cta> @role` | Revoke role permission |
+| `/perms add <bank\|cta\|content> @role` | Grant role permission |
+| `/perms remove <bank\|cta\|content> @role` | Revoke role permission |
 
 **Permission Types:**
 - `bank` - Allow role to manage bank deposits/withdrawals
 - `cta` - Allow role to create regear threads
+- `content` - Allow role to create and manage content callouts
 
 ---
 

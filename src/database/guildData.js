@@ -37,7 +37,12 @@ export function loadPermissions(guildId) {
   try {
     const file = getPermissionsFile(guildId);
     if (fs.existsSync(file)) {
-      return JSON.parse(fs.readFileSync(file, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return {
+        bankAdminRoles: Array.isArray(data.bankAdminRoles) ? data.bankAdminRoles : [],
+        ctaRegearRoles: Array.isArray(data.ctaRegearRoles) ? data.ctaRegearRoles : [],
+        contentAdminRoles: Array.isArray(data.contentAdminRoles) ? data.contentAdminRoles : [],
+      };
     }
   } catch (e) {
     console.error(`Error loading permissions for guild ${guildId}:`, e);

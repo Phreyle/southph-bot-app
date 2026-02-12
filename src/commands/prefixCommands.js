@@ -383,11 +383,12 @@ export async function handlePrefixCommands(message, command, args, prefix) {
         .setDescription(
           `**Usage:**\n` +
           `\`${prefix}perms list\` - List all role permissions\n` +
-          `\`${prefix}perms add <bank|cta> @role\` - Add role to permission group\n` +
-          `\`${prefix}perms remove <bank|cta> @role\` - Remove role from permission group\n\n` +
+          `\`${prefix}perms add <bank|cta|content> @role\` - Add role to permission group\n` +
+          `\`${prefix}perms remove <bank|cta|content> @role\` - Remove role from permission group\n\n` +
           `**Permission Types:**\n` +
           `• \`bank\` - Can use bank deposit/withdraw/clear commands\n` +
-          `• \`cta\` - Can use /ctaregear command`
+          `• \`cta\` - Can create and close regear threads\n` +
+          `• \`content\` - Can create and manage content callouts`
         );
       await message.reply({ embeds: [embed] });
       return;
@@ -397,13 +398,15 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       const permissions = loadPermissions(message.guild.id);
       const bankRoles = permissions.bankAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
       const ctaRoles = permissions.ctaRegearRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
+      const contentRoles = permissions.contentAdminRoles.map(id => `<@&${id}>`).join('\n') || '*None*';
       
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🔐 Current Role Permissions')
         .addFields(
           { name: '💰 Bank Admin Roles', value: bankRoles, inline: false },
-          { name: '⚔️ CTA Regear Roles', value: ctaRoles, inline: false }
+          { name: '⚔️ CTA Regear Roles', value: ctaRoles, inline: false },
+          { name: '🎮 Content Admin Roles', value: contentRoles, inline: false }
         )
         .setFooter({ text: 'Administrators always have access to all commands' });
       
@@ -413,7 +416,7 @@ export async function handlePrefixCommands(message, command, args, prefix) {
 
     const role = message.mentions.roles.first();
     if (!role) {
-      await message.reply(`❌ Please mention a role. Usage: \`${prefix}perms ${subcommand} <bank|cta> @role\``);
+      await message.reply(`❌ Please mention a role. Usage: \`${prefix}perms ${subcommand} <bank|cta|content> @role\``);
       return;
     }
 
@@ -425,8 +428,11 @@ export async function handlePrefixCommands(message, command, args, prefix) {
     } else if (permType === 'cta') {
       configKey = 'ctaRegearRoles';
       displayName = 'CTA Regear';
+    } else if (permType === 'content') {
+      configKey = 'contentAdminRoles';
+      displayName = 'Content Admin';
     } else {
-      await message.reply(`❌ Invalid permission type. Use \`bank\` or \`cta\`.`);
+      await message.reply(`❌ Invalid permission type. Use \`bank\`, \`cta\`, or \`content\`.`);
       return;
     }
 
