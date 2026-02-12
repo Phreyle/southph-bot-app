@@ -1,4 +1,4 @@
-import { EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import axios from 'axios';
 import { InteractionResponseType } from 'discord-interactions';
 import { DiscordRequest } from '../../utils.js';
@@ -1911,23 +1911,35 @@ export async function handleSlashCommands(req, res, client) {
           const embed = new EmbedBuilder()
             .setColor(0xF0B900)
             .setTitle('⚠️ Multiple Players Found')
-            .setDescription(result.message)
-            .setFooter({ text: 'Use /info to see detailed player information' });
+            .setDescription(`${result.message}\n\n**Click the button for your character:**`)
+            .setFooter({ text: 'Buttons will expire after 5 minutes' });
 
           result.players.forEach((player, index) => {
             const guildInfo = player.GuildName ? `**Guild:** ${player.GuildName}` : '**Guild:** None';
             const allianceInfo = player.AllianceName ? `\n**Alliance:** ${player.AllianceName}` : '';
             embed.addFields({
               name: `${index + 1}. ${player.Name}`,
-              value: `**Player ID:** ${player.Id}\n${guildInfo}${allianceInfo}\n\nTo register this character, use:\n\`/register region:${region} playerid:${player.Id}\``,
+              value: `**Player ID:** ${player.Id}\n${guildInfo}${allianceInfo}`,
               inline: false
             });
           });
+
+          // Create buttons for each player (max 5)
+          const buttons = result.players.slice(0, 5).map((player, index) => 
+            new ButtonBuilder()
+              .setCustomId(`albion_register_${userId}_${region}_${player.Id}`)
+              .setLabel(`${index + 1}. ${player.GuildName || 'No Guild'}`)
+              .setStyle(player.GuildName ? ButtonStyle.Primary : ButtonStyle.Secondary)
+              .setEmoji(player.GuildName ? '✅' : '❌')
+          );
+
+          const row = new ActionRowBuilder().addComponents(buttons);
 
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
             method: 'PATCH',
             body: {
               embeds: [embed.toJSON()],
+              components: [row],
               flags: 64
             }
           });

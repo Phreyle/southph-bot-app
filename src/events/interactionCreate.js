@@ -6,6 +6,8 @@ import {
   handleCloseTicket 
 } from '../systems/ticket/ticket-system.js';
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
+import { registerUser } from '../systems/albion/albion.js';
+import { EmbedBuilder } from 'discord.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -13,6 +15,70 @@ export async function handleInteractionCreate(interaction) {
     if (!interaction.isButton()) return;
 
     const customId = interaction.customId;
+
+    // Albion registration button handler
+    if (customId.startsWith('albion_register_')) {
+      // Parse custom ID: albion_register_userId_region_playerId
+      const parts = customId.split('_');
+      const userId = parts[2];
+      const region = parts[3];
+      const playerId = parts.slice(4).join('_'); // Handle IDs with underscores
+
+      // Check if the button clicker is the same user who initiated registration
+      if (interaction.user.id !== userId) {
+        await interaction.reply({
+          content: '❌ This registration is not for you. Please use `/register` to register your own character.',
+          ephemeral: true
+        });
+        return;
+      }
+
+      // Defer the reply
+      await interaction.deferReply({ ephemeral: true });
+
+      // Perform registration with the player ID
+      const result = await registerUser(interaction.guild, userId, region, null, playerId);
+
+      if (!result.success) {
+        await interaction.editReply({
+          content: `❌ Registration failed: ${result.message}`
+        });
+        return;
+      }
+
+      // Success - send confirmation
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Registration Successful')
+        .setDescription(result.message)
+        .addFields(
+          { name: 'In-Game Name', value: result.data.ign, inline: true },
+          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Region', value: region.toUpperCase(), inline: true }
+        )
+        .setTimestamp();
+
+      if (result.data.roleAssigned) {
+        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+      }
+
+      if (result.data.nicknameApplied) {
+        embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      }
+
+      await interaction.editReply({
+        embeds: [embed]
+      });
+
+      // Try to delete the original selection message
+      try {
+        await interaction.message.delete();
+      } catch (error) {
+        console.log('Could not delete selection message:', error.message);
+      }
+
+      return;
+    }
 
     // Ticket system buttons
     if (customId === 'apply_ticket') {
@@ -45,6 +111,90 @@ export async function handleInteractionCreate(interaction) {
 // Button interactions handler for Express endpoint
 export async function handleButtonInteractions(req, res, client) {
   const componentId = req.body.data.custom_id;
+
+  // Albion registration button handler
+  if (componentId.startsWith('albion_register_')) {
+    console.log('🎮 Albion registration button clicked');
+    const parts = componentId.split('_');
+    const requestUserId = parts[2];
+    const region = parts[3];
+    const playerId = parts.slice(4).join('_');
+    
+    const clickerId = req.body.member?.user?.id || req.body.user?.id;
+
+    // Check if the button clicker is the same user who initiated registration
+    if (clickerId !== requestUserId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ This registration is not for you. Please use `/register` to register your own character.',
+          flags: 64
+        }
+      });
+    }
+
+    // Defer response
+    res.send({
+      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { flags: 64 }
+    });
+
+    try {
+      const guild = client.guilds.cache.get(req.body.guild_id);
+      const result = await registerUser(guild, requestUserId, region, null, playerId);
+
+      if (!result.success) {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+          method: 'PATCH',
+          body: {
+            content: `❌ Registration failed: ${result.message}`,
+            flags: 64
+          }
+        });
+        return;
+      }
+
+      // Success
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Registration Successful')
+        .setDescription(result.message)
+        .addFields(
+          { name: 'In-Game Name', value: result.data.ign, inline: true },
+          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Region', value: region.toUpperCase(), inline: true }
+        )
+        .setTimestamp();
+
+      if (result.data.roleAssigned) {
+        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+      }
+
+      if (result.data.nicknameApplied) {
+        embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      }
+
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          embeds: [embed.toJSON()],
+          components: [], // Remove buttons
+          flags: 64
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in albion registration button:', error);
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: {
+          content: '❌ An unexpected error occurred during registration.',
+          flags: 64
+        }
+      });
+    }
+    return;
+  }
 
   // Ticket system button handlers
   if (componentId === 'apply_ticket') {
