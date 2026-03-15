@@ -7,7 +7,8 @@ import {
   EmbedBuilder, 
   ActionRowBuilder, 
   ButtonBuilder, 
-  ButtonStyle
+  ButtonStyle,
+  ChannelType
 } from 'discord.js';
 import axios from 'axios';
 import {
@@ -128,13 +129,20 @@ export async function handleApplyTicket(interaction) {
 
     const applicantName = ticketAuthor.displayName || ticketAuthor.user.username;
 
-    // Get the thread parent channel
+    // Get forum channel (cached or fetched)
     const threadParentChannel = panel.ticketCategoryId
-      ? guild.channels.cache.get(panel.ticketCategoryId)
+      ? (guild.channels.cache.get(panel.ticketCategoryId)
+        || await guild.channels.fetch(panel.ticketCategoryId).catch(() => null))
       : null;
     if (!threadParentChannel) {
       return interaction.editReply({
-        content: '❌ The configured thread channel is invalid. Please contact an administrator to fix the ticket setup.'
+        content: '❌ The configured forum channel is invalid. Please contact an administrator to fix the ticket setup.'
+      });
+    }
+
+    if (threadParentChannel.type !== ChannelType.GuildForum || !threadParentChannel.threads) {
+      return interaction.editReply({
+        content: '❌ Ticket setup error: the configured channel is not a Forum channel. Please run `!ticketsetup` using your applicants forum channel ID.'
       });
     }
 

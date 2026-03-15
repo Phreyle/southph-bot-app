@@ -3,7 +3,7 @@
  * Commands to manage ticket panels per guild
  */
 
-import { EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { EmbedBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { savePanels, loadPanels } from './ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from './ticket-utils.js';
 
@@ -19,9 +19,9 @@ export async function setupTicketPanel(message, args) {
 
   if (args.length < 7) {
     return message.reply(
-      '❌ Usage: `!ticketsetup <panelId> <ticketType> <threadChannelId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat] [albionGuild] [albionRegion]`\n' +
+      '❌ Usage: `!ticketsetup <panelId> <ticketType> <forumChannelId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat] [albionGuild] [albionRegion]`\n' +
       'Example: `!ticketsetup apply "Apply" 123456 789012 345678,901234 567890 111213 "SOUTH | {username}" "South PH" "Asia"`\n' +
-      'Note: threadChannelId is the text channel where application threads will be created\n' +
+      'Note: forumChannelId must be your Forum channel where application posts will be created\n' +
       'Note: staffRoleIds should be comma-separated (no spaces)\n' +
       'Albion regions: Americas, Europe, Asia'
     );
@@ -46,6 +46,11 @@ export async function setupTicketPanel(message, args) {
   try {
     const guildId = message.guildId;
     const panels = await loadPanels(guildId);
+
+    const forumChannel = await message.guild.channels.fetch(ticketCategoryId).catch(() => null);
+    if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
+      return message.reply('❌ Invalid forumChannelId. Please provide the ID of a Forum channel (for example, your applicants forum).');
+    }
 
     // Check if panel already exists
     const existingIndex = panels.findIndex(p => p.panelId === panelId);
@@ -72,7 +77,7 @@ export async function setupTicketPanel(message, args) {
       .addFields(
         { name: 'Panel ID', value: panelId, inline: true },
         { name: 'Ticket Type', value: ticketTypeName, inline: true },
-        { name: 'Thread Channel', value: `<#${ticketCategoryId}>`, inline: true },
+        { name: 'Forum Channel', value: `<#${ticketCategoryId}>`, inline: true },
         { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
         { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
         { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false }
@@ -108,7 +113,7 @@ export async function listTicketPanels(message) {
 
     for (const panel of panels) {
       const fieldLines = [
-        `**Category:** <#${panel.ticketCategoryId}>`,
+        `**Forum Channel:** <#${panel.ticketCategoryId}>`,
         `**Ping Role:** <@&${panel.pingRoleId}>`,
         `**Transcript:** <#${panel.transcriptChannelId}>`,
         `**Staff Roles:** ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`
