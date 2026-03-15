@@ -19,8 +19,9 @@ export async function setupTicketPanel(message, args) {
 
   if (args.length < 7) {
     return message.reply(
-      '❌ Usage: `!ticketsetup <panelId> <ticketType> <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat] [albionGuild] [albionRegion]`\n' +
+      '❌ Usage: `!ticketsetup <panelId> <ticketType> <threadChannelId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> [nicknameFormat] [albionGuild] [albionRegion]`\n' +
       'Example: `!ticketsetup apply "Apply" 123456 789012 345678,901234 567890 111213 "SOUTH | {username}" "South PH" "Asia"`\n' +
+      'Note: threadChannelId is the text channel where application threads will be created\n' +
       'Note: staffRoleIds should be comma-separated (no spaces)\n' +
       'Albion regions: Americas, Europe, Asia'
     );
@@ -71,7 +72,7 @@ export async function setupTicketPanel(message, args) {
       .addFields(
         { name: 'Panel ID', value: panelId, inline: true },
         { name: 'Ticket Type', value: ticketTypeName, inline: true },
-        { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
+        { name: 'Thread Channel', value: `<#${ticketCategoryId}>`, inline: true },
         { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
         { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
         { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false }

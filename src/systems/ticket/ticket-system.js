@@ -7,9 +7,7 @@ import {
   EmbedBuilder, 
   ActionRowBuilder, 
   ButtonBuilder, 
-  ButtonStyle, 
-  ChannelType,
-  PermissionFlagsBits 
+  ButtonStyle
 } from 'discord.js';
 import axios from 'axios';
 import {
@@ -96,22 +94,22 @@ export async function handleApplyTicket(interaction) {
     // Check for duplicate open tickets
     const existingTicket = await getOpenTicketByAuthor(guildId, userId, 'apply');
     if (existingTicket) {
-      // Verify the channel still exists
-      const existingChannel = guild.channels.cache.get(existingTicket.channelId);
-      if (existingChannel) {
+      // Verify the forum post still exists and is not archived
+      const existingThread = guild.channels.cache.get(existingTicket.channelId)
+        || await guild.channels.fetch(existingTicket.channelId).catch(() => null);
+      if (existingThread && !existingThread.archived) {
         return interaction.reply({
-          content: `❌ You already have an open ticket: <#${existingTicket.channelId}>`,
+          content: `❌ You already have an open application: <#${existingTicket.channelId}>`,
           ephemeral: true
         });
       } else {
-        // Channel was deleted, update ticket status to closed
+        // Post was deleted or archived, mark ticket closed and allow a new one
         await updateTicket(guildId, existingTicket.ticketId, {
           status: 'closed',
           closeDate: new Date().toISOString(),
-          closeReason: 'Channel deleted',
+          closeReason: 'Post deleted or archived',
           closedBy: null
         });
-        // Allow user to create new ticket
       }
     }
 
@@ -120,23 +118,7 @@ export async function handleApplyTicket(interaction) {
     // Get next ticket ID
     const ticketId = await getNextTicketId(guildId);
 
-    // Create ticket channel
-    const channelName = `ticket-${ticketId}`;
-
-    // Get category and validate it's actually a category
-    let category = null;
-    if (panel.ticketCategoryId) {
-      const categoryChannel = guild.channels.cache.get(panel.ticketCategoryId);
-      if (categoryChannel && categoryChannel.type === ChannelType.GuildCategory) {
-        category = categoryChannel;
-      } else {
-        return interaction.editReply({
-          content: '❌ The configured ticket category is invalid. Please contact an administrator to fix the ticket setup.'
-        });
-      }
-    }
-
-    // Fetch user and roles to ensure they're cached
+    // Fetch applicant member
     const ticketAuthor = await guild.members.fetch(userId).catch(() => null);
     if (!ticketAuthor) {
       return interaction.editReply({
@@ -144,51 +126,51 @@ export async function handleApplyTicket(interaction) {
       });
     }
 
-    // Fetch all staff roles to ensure they're cached
-    const staffRoles = [];
-    for (const roleId of panel.staffRoleIds) {
-      const role = await guild.roles.fetch(roleId).catch(() => null);
-      if (role) {
-        staffRoles.push(role);
-      }
+    const applicantName = ticketAuthor.displayName || ticketAuthor.user.username;
+
+    // Get the thread parent channel
+    const threadParentChannel = panel.ticketCategoryId
+      ? guild.channels.cache.get(panel.ticketCategoryId)
+      : null;
+    if (!threadParentChannel) {
+      return interaction.editReply({
+        content: '❌ The configured thread channel is invalid. Please contact an administrator to fix the ticket setup.'
+      });
     }
 
-    // Create channel with permissions
-    const channel = await guild.channels.create({
-      name: channelName,
-      type: ChannelType.GuildText,
-      parent: category,
-      permissionOverwrites: [
-        {
-          id: guild.id,
-          deny: [PermissionFlagsBits.ViewChannel]
-        },
-        {
-          id: ticketAuthor.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory
-          ]
-        },
-        // Add staff roles
-        ...staffRoles.map(role => ({
-          id: role.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-            PermissionFlagsBits.ManageChannels
-          ]
-        }))
-      ]
+    // Build the form content for the initial forum post
+    const pingContent = `<@${userId}>${panel.pingRoleId ? ` <@&${panel.pingRoleId}>` : ''}`;
+
+    const formEmbed = new EmbedBuilder()
+      .setTitle('Guild Application Form')
+      .setDescription(
+        '1️⃣ Do you play on PC or Mobile?\n' +
+        '2️⃣ Can you speak English?\n' +
+        '3️⃣ Do you have experience in ZvZ or Small Scale PvP?\n' +
+        "4️⃣ What's your nationality?\n" +
+        '5️⃣ Why do you want to join our guild?\n' +
+        "6️⃣ What's your main weapon/role for ZvZ / Small Scale / PvE?\n" +
+        '7️⃣ Do you have a mic and can join voice comms during content?\n' +
+        '8️⃣ What time do you usually play? (Specify in UTC)\n' +
+        '9️⃣ Previous guilds and reason for leaving?\n\n' +
+        '📸 Please attach a screenshot of your in-game stats.'
+      )
+      .setColor(0xF1C40F);
+
+    // Create a forum post — the initial message IS the post body
+    const thread = await threadParentChannel.threads.create({
+      name: `Ticket ${ticketId} | ${applicantName}`,
+      message: {
+        content: pingContent,
+        embeds: [formEmbed]
+      }
     });
 
     // Create ticket record
     const ticket = {
       ticketId,
       guildId,
-      channelId: channel.id,
+      channelId: thread.id,
       panelId: 'apply',
       authorId: userId,
       claimedBy: null,
@@ -209,7 +191,7 @@ export async function handleApplyTicket(interaction) {
         const openedEmbed = new EmbedBuilder()
           .setTitle('🎫 Ticket Opened')
           .addFields(
-            { name: 'Ticket Name', value: channelName, inline: true },
+            { name: 'Thread Name', value: `Ticket ${ticketId} | ${applicantName}`, inline: true },
             { name: 'Created By', value: `<@${userId}>`, inline: true },
             { name: 'Opened Date', value: formatDate(ticket.openDate), inline: false },
             { name: 'Ticket Type', value: panel.ticketTypeName, inline: true }
@@ -221,14 +203,13 @@ export async function handleApplyTicket(interaction) {
       }
     }
 
-    // Send header message in ticket channel
+    // Send staff control buttons as a follow-up message in the forum post
     const headerEmbed = new EmbedBuilder()
       .setTitle(`${panel.ticketTypeName} Ticket`)
-      .setDescription(`Thank you for opening a ticket, <@${userId}>.\nStaff will be with you shortly.`)
+      .setDescription(`Please answer the questions above.\nStaff will review your application shortly.`)
       .setColor(0x5865F2)
       .setTimestamp();
 
-    // Create control buttons
     const closeButton = new ButtonBuilder()
       .setCustomId('ticket_close')
       .setLabel('Close Ticket')
@@ -243,13 +224,10 @@ export async function handleApplyTicket(interaction) {
 
     const row = new ActionRowBuilder().addComponents(closeButton, claimButton);
 
-    // Ping role and user who created the ticket
-    const pingMessage = `<@${userId}> ${panel.pingRoleId ? `<@&${panel.pingRoleId}>` : ''}`;
-    await channel.send({ content: pingMessage, embeds: [headerEmbed], components: [row] });
+    await thread.send({ embeds: [headerEmbed], components: [row] });
 
     return interaction.editReply({
-      content: `✅ Ticket created: ${channel}`,
-      ephemeral: true
+      content: `✅ Your application has been created: <#${thread.id}>`
     });
 
   } catch (error) {
@@ -456,16 +434,24 @@ export async function handleCloseTicket(interaction) {
       }
     }
 
+    const isThread = interaction.channel.isThread();
     await interaction.editReply({
-      content: '✅ Ticket closed. Channel will be deleted in 5 seconds...'
+      content: isThread
+        ? '✅ Ticket closed. Thread will be archived in 5 seconds...'
+        : '✅ Ticket closed. Channel will be deleted in 5 seconds...'
     });
 
-    // Delete channel after delay
+    // Archive thread or delete channel after delay
     setTimeout(async () => {
       try {
-        await interaction.channel.delete();
+        if (isThread) {
+          await interaction.channel.setLocked(true);
+          await interaction.channel.setArchived(true);
+        } else {
+          await interaction.channel.delete();
+        }
       } catch (error) {
-        console.error('Failed to delete channel:', error);
+        console.error('Failed to close ticket channel/thread:', error);
       }
     }, 5000);
 
