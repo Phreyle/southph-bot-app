@@ -188,8 +188,10 @@ export async function handleApplyTicket(interaction) {
         "6️⃣ What's your main weapon/role for ZvZ / Small Scale / PvE?\n" +
         '7️⃣ Do you have a mic and can join voice comms during content?\n' +
         '8️⃣ What time do you usually play? (Specify in UTC)\n' +
-        '9️⃣ Previous guilds and reason for leaving?\n\n' +
-        '📸 Please attach a screenshot of your in-game stats.'
+        '9️⃣ Previous guilds and reason for leaving?\n' +
+        '🔟 Are you willing to join in any contents, especially CTA, since we have an alliance?\n\n' +
+        '📸 Please attach a screenshot of your in-game stats.\n' +
+        ' IMPORTANT NOTE: inactive and active but not joining any contents will be kick from the guild'
       )
       .setColor(0xF1C40F);
 
