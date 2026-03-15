@@ -8,7 +8,8 @@ import {
   ActionRowBuilder, 
   ButtonBuilder, 
   ButtonStyle,
-  ChannelType
+  ChannelType,
+  PermissionFlagsBits
 } from 'discord.js';
 import axios from 'axios';
 import {
@@ -42,8 +43,35 @@ function formatDate(date) {
  * Check if user has staff role
  */
 function isStaff(member, staffRoleIds) {
-  if (!member || !staffRoleIds || !member.roles || !member.roles.cache) return false;
-  return staffRoleIds.some(roleId => member.roles.cache.has(roleId));
+  if (!member) return false;
+
+  // Allow full-permission server staff even if role IDs are misconfigured.
+  const permissionChecks = [
+    PermissionFlagsBits.Administrator,
+    PermissionFlagsBits.ManageGuild,
+    PermissionFlagsBits.ManageChannels,
+    PermissionFlagsBits.ManageThreads
+  ];
+
+  const memberPermissions = member.permissions;
+  if (memberPermissions && typeof memberPermissions.has === 'function') {
+    if (permissionChecks.some(permission => memberPermissions.has(permission))) {
+      return true;
+    }
+  }
+
+  if (!Array.isArray(staffRoleIds) || staffRoleIds.length === 0) return false;
+
+  // Support both GuildMember roles cache and API member role arrays.
+  if (member.roles?.cache) {
+    return staffRoleIds.some(roleId => member.roles.cache.has(roleId));
+  }
+
+  if (Array.isArray(member.roles)) {
+    return staffRoleIds.some(roleId => member.roles.includes(roleId));
+  }
+
+  return false;
 }
 
 /**

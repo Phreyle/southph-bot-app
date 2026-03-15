@@ -31,7 +31,7 @@ export async function setupTicketPanel(message, args) {
   const ticketTypeName = args[1].replace(/"/g, '');
   const ticketCategoryId = args[2];
   const pingRoleId = args[3];
-  const staffRoleIds = args[4].split(',');
+  const staffRoleIds = args[4].split(',').map(id => id.trim()).filter(Boolean);
   const approveRoleId = args[5];
   const transcriptChannelId = args[6];
   const nicknameFormat = args[7] ? args[7].replace(/"/g, '') : 'SOUTH | {username}';
@@ -54,18 +54,26 @@ export async function setupTicketPanel(message, args) {
 
     // Check if panel already exists
     const existingIndex = panels.findIndex(p => p.panelId === panelId);
-    
+
     const newPanel = {
       panelId,
       ticketTypeName,
       ticketCategoryId,
       pingRoleId,
       staffRoleIds,
-      transcriptChannelId
+      approveRoleId,
+      transcriptChannelId,
+      nicknameFormat,
+      requiredAlbionGuild,
+      albionRegion
     };
 
     if (existingIndex >= 0) {
-      panels[existingIndex] = newPanel;
+      // Preserve any fields that are not explicitly passed this run.
+      panels[existingIndex] = {
+        ...panels[existingIndex],
+        ...newPanel
+      };
     } else {
       panels.push(newPanel);
     }

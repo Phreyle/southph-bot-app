@@ -1,4 +1,4 @@
-import { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } from 'discord.js';
 import axios from 'axios';
 import { InteractionResponseType } from 'discord-interactions';
 import { DiscordRequest } from '../../utils.js';
@@ -1165,9 +1165,22 @@ export async function handleSlashCommands(req, res, client) {
       const ticketCategoryId = options.find(o => o.name === 'category').value;
       const pingRoleId = options.find(o => o.name === 'ping_role').value;
       const staffRoleIds = options.find(o => o.name === 'staff_roles').value.split(',').map(id => id.trim());
+      const approveRoleId = options.find(o => o.name === 'approve_role')?.value || pingRoleId;
       const transcriptChannelId = options.find(o => o.name === 'transcript_channel').value;
+      const nicknameFormat = options.find(o => o.name === 'nickname_format')?.value || 'SOUTH | {username}';
 
       try {
+        const forumChannel = await client.channels.fetch(ticketCategoryId).catch(() => null);
+        if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: '❌ Invalid forum channel. Please select your applicants Forum channel.',
+              flags: 64
+            },
+          });
+        }
+
         const panels = await loadPanels(guildId);
         const existingIndex = panels.findIndex(p => p.panelId === panelId);
         
@@ -1177,11 +1190,16 @@ export async function handleSlashCommands(req, res, client) {
           ticketCategoryId,
           pingRoleId,
           staffRoleIds,
-          transcriptChannelId
+          approveRoleId,
+          transcriptChannelId,
+          nicknameFormat
         };
 
         if (existingIndex >= 0) {
-          panels[existingIndex] = newPanel;
+          panels[existingIndex] = {
+            ...panels[existingIndex],
+            ...newPanel
+          };
         } else {
           panels.push(newPanel);
         }
@@ -1193,7 +1211,7 @@ export async function handleSlashCommands(req, res, client) {
           .addFields(
             { name: 'Panel ID', value: panelId, inline: true },
             { name: 'Ticket Type', value: ticketTypeName, inline: true },
-            { name: 'Category', value: `<#${ticketCategoryId}>`, inline: true },
+            { name: 'Forum Channel', value: `<#${ticketCategoryId}>`, inline: true },
             { name: 'Ping Role', value: `<@&${pingRoleId}>`, inline: true },
             { name: 'Transcript Channel', value: `<#${transcriptChannelId}>`, inline: true },
             { name: 'Staff Roles', value: staffRoleIds.map(id => `<@&${id}>`).join(', '), inline: false }
@@ -1243,7 +1261,7 @@ export async function handleSlashCommands(req, res, client) {
 
         for (const panel of panels) {
           const fields = [
-            `Category: <#${panel.ticketCategoryId}>`,
+            `Forum Channel: <#${panel.ticketCategoryId}>`,
             `Ping Role: <@&${panel.pingRoleId}>`,
             `Transcript: <#${panel.transcriptChannelId}>`,
             `Staff Roles: ${panel.staffRoleIds.map(id => `<@&${id}>`).join(', ')}`
