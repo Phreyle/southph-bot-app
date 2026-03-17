@@ -223,6 +223,51 @@ function buildRegistrationPayload(guild, discordId, region, registerType, valida
   };
 }
 
+function normalizeString(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isSameAlbionIdentity(existingRecord, registrationPayload) {
+  if (!existingRecord || !registrationPayload) {
+    return false;
+  }
+
+  const existingPlayerId = existingRecord.player_id || existingRecord.playerId || null;
+  const incomingPlayerId = registrationPayload.playerId || null;
+
+  if (existingPlayerId && incomingPlayerId) {
+    return existingPlayerId === incomingPlayerId;
+  }
+
+  const existingIgn = normalizeString(existingRecord.player_name || existingRecord.ign);
+  const incomingIgn = normalizeString(registrationPayload.ign);
+  if (!existingIgn || !incomingIgn || existingIgn !== incomingIgn) {
+    return false;
+  }
+
+  const existingRegion = normalizeString(existingRecord.albion_region || existingRecord.region);
+  const incomingRegion = normalizeString(registrationPayload.region);
+  return existingRegion === incomingRegion;
+}
+
+function findIdentityOwnerConflict(registrations, registrationPayload, discordId) {
+  for (const registration of registrations) {
+    if (registration.is_active === false) {
+      continue;
+    }
+
+    if (!isSameAlbionIdentity(registration, registrationPayload)) {
+      continue;
+    }
+
+    if (registration.discord_user_id !== discordId) {
+      return registration;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Register a user with typed verification.
  * Backward compatible signature:
@@ -255,6 +300,29 @@ export async function registerUser(guild, discordId, region, ign, playerId = nul
   }
 
   const registrationPayload = buildRegistrationPayload(guild, discordId, region, normalizedType, validation.data);
+
+  const existingUserRegistration = getAlbionUser(guildId, discordId, normalizedType);
+  if (existingUserRegistration && isSameAlbionIdentity(existingUserRegistration, registrationPayload)) {
+    return {
+      success: false,
+      error: 'ALREADY_REGISTERED',
+      message: `You are already registered as **${registrationPayload.ign}** (${normalizedType.toUpperCase()}).`
+    };
+  }
+
+  const allActiveRegistrations = getAllAlbionUsers(guildId, null, true);
+  const identityConflict = findIdentityOwnerConflict(allActiveRegistrations, registrationPayload, discordId);
+  if (identityConflict) {
+    const ownerDiscordId = identityConflict.discord_user_id;
+    const ownerType = (identityConflict.register_type || 'guild').toUpperCase();
+    const ownerIgn = identityConflict.player_name || identityConflict.ign || registrationPayload.ign;
+
+    return {
+      success: false,
+      error: 'IGN_ALREADY_REGISTERED',
+      message: `Character **${ownerIgn}** is already registered to <@${ownerDiscordId}> (${ownerType}). This character/alliance identity can only be owned by one Discord account.`
+    };
+  }
 
   // Upsert active registration for one user/type pair.
   saveAlbionUser(guildId, discordId, registrationPayload);
