@@ -539,12 +539,56 @@ export async function handlePrefixCommands(message, command, args, prefix) {
           `**Available subcommands:**\n` +
           `\`${prefix}set guild <region> <guild_name>\` - Set region and guild\n` +
           `\`${prefix}set register-role @role\` - Set verified member role\n` +
+          `\`${prefix}set alliance-role @role\` - Set alliance registration role\n` +
+          `\`${prefix}set alliance-role-enabled <true|false>\` - Toggle alliance role assignment\n` +
+          `\`${prefix}set alliance-nickname-format <format>\` - Set alliance nickname format\n` +
+          `\`${prefix}set alliance-nickname-enabled <true|false>\` - Toggle alliance nickname updates\n` +
+          `\`${prefix}set alliance-nickname-overwrite <true|false>\` - Toggle nickname overwrite\n` +
           `\`${prefix}set guild-tag <tag>\` - Set guild tag\n` +
           `\`${prefix}set nickname-format <format>\` - Set nickname format\n\n` +
           `**Regions:** americas, europe, asia\n` +
-          `**Nickname variables:** {ign}, {tag}, {guild}, {region}`
+          `**Nickname variables:** {ign}, {tag}, {guild}, {region}\n` +
+          `**Alliance nickname variables:** {allianceTag}, {allianceName}, {playerName}`
         );
       await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: alliance-role
+    if (subcommand === 'alliance-role') {
+      const role = message.mentions.roles.first();
+
+      if (!role) {
+        await message.reply(`❌ Usage: \`${prefix}set alliance-role @role\``);
+        return;
+      }
+
+      config.allianceRoleIds = [role.id];
+      config.allianceRoleEnabled = true;
+      saveAlbionConfig(message.guild.id, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Alliance Role Updated')
+        .setDescription(`Alliance registrations will assign ${role}`)
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: alliance-role-enabled
+    if (subcommand === 'alliance-role-enabled') {
+      const enabledValue = args[1]?.toLowerCase();
+      if (!['true', 'false'].includes(enabledValue)) {
+        await message.reply(`❌ Usage: \`${prefix}set alliance-role-enabled <true|false>\``);
+        return;
+      }
+
+      config.allianceRoleEnabled = enabledValue === 'true';
+      saveAlbionConfig(message.guild.id, config);
+
+      await message.reply(`✅ Alliance role assignment is now **${config.allianceRoleEnabled ? 'enabled' : 'disabled'}**.`);
       return;
     }
 
@@ -658,6 +702,69 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       return;
     }
 
+    // Subcommand: alliance-nickname-format
+    if (subcommand === 'alliance-nickname-format') {
+      const format = args.slice(1).join(' ');
+
+      if (!format) {
+        await message.reply(`❌ Usage: \`${prefix}set alliance-nickname-format <format>\`\nExample: \`${prefix}set alliance-nickname-format [{allianceTag}] | {playerName}\``);
+        return;
+      }
+
+      if (format.length > 64) {
+        await message.reply('❌ Alliance nickname format is too long (max 64 characters).');
+        return;
+      }
+
+      config.allianceNicknameFormat = format;
+      saveAlbionConfig(message.guild.id, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Alliance Nickname Format Updated')
+        .setDescription(
+          `**Format:** ${format}\n\n` +
+          '**Available variables:**\n' +
+          '• `{allianceTag}` - Alliance tag\n' +
+          '• `{allianceName}` - Alliance name\n' +
+          '• `{playerName}` - In-game name'
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Subcommand: alliance-nickname-enabled
+    if (subcommand === 'alliance-nickname-enabled') {
+      const enabledValue = args[1]?.toLowerCase();
+      if (!['true', 'false'].includes(enabledValue)) {
+        await message.reply(`❌ Usage: \`${prefix}set alliance-nickname-enabled <true|false>\``);
+        return;
+      }
+
+      config.allianceNicknameEnabled = enabledValue === 'true';
+      saveAlbionConfig(message.guild.id, config);
+
+      await message.reply(`✅ Alliance nickname updates are now **${config.allianceNicknameEnabled ? 'enabled' : 'disabled'}**.`);
+      return;
+    }
+
+    // Subcommand: alliance-nickname-overwrite
+    if (subcommand === 'alliance-nickname-overwrite') {
+      const enabledValue = args[1]?.toLowerCase();
+      if (!['true', 'false'].includes(enabledValue)) {
+        await message.reply(`❌ Usage: \`${prefix}set alliance-nickname-overwrite <true|false>\``);
+        return;
+      }
+
+      config.allianceNicknameOverwrite = enabledValue === 'true';
+      saveAlbionConfig(message.guild.id, config);
+
+      await message.reply(`✅ Alliance nickname overwrite is now **${config.allianceNicknameOverwrite ? 'enabled' : 'disabled'}**.`);
+      return;
+    }
+
     await message.reply(`❌ Unknown subcommand. Use \`${prefix}set\` to see available options.`);
     return;
   }
@@ -679,7 +786,12 @@ export async function handlePrefixCommands(message, command, args, prefix) {
         { name: 'Guild Name', value: config.albionGuildName || '*Not set*', inline: true },
         { name: 'Register Role', value: config.registerRoleId ? `<@&${config.registerRoleId}>` : '*Not set*', inline: true },
         { name: 'Guild Tag', value: config.guildTag || '*Not set*', inline: true },
-        { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false }
+        { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false },
+        { name: 'Alliance Role Assignment', value: config.allianceRoleEnabled ? 'Enabled' : 'Disabled', inline: true },
+        { name: 'Alliance Role(s)', value: (config.allianceRoleIds || []).length > 0 ? config.allianceRoleIds.map(id => `<@&${id}>`).join(', ') : '*Not set*', inline: false },
+        { name: 'Alliance Nickname Updates', value: config.allianceNicknameEnabled ? 'Enabled' : 'Disabled', inline: true },
+        { name: 'Alliance Nickname Format', value: config.allianceNicknameFormat || '[{allianceTag}] | {playerName}', inline: false },
+        { name: 'Alliance Nickname Overwrite', value: config.allianceNicknameOverwrite ? 'Enabled' : 'Disabled', inline: true }
       )
       .setFooter({ text: `Use ${prefix}set to configure these settings` })
       .setTimestamp();
@@ -779,10 +891,14 @@ export async function handlePrefixCommands(message, command, args, prefix) {
 
       if (result.data.roleAssigned) {
         embed.addFields({ name: 'Role', value: `✅ ${result.data.roleName || 'Assigned'}`, inline: true });
+      } else if (result.data.roleWarning) {
+        embed.addFields({ name: 'Role', value: `⚠️ ${result.data.roleWarning}`, inline: false });
       }
 
       if (result.data.nicknameApplied) {
         embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      } else if (result.data.nicknameWarning) {
+        embed.addFields({ name: 'Nickname', value: `⚠️ ${result.data.nicknameWarning}`, inline: false });
       }
 
       await loadingMsg.edit({ content: null, embeds: [embed] });

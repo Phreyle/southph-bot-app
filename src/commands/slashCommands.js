@@ -1857,6 +1857,111 @@ export async function handleSlashCommands(req, res, client) {
         },
       });
     }
+
+    // Subcommand: alliance-role
+    if (subcommand === 'alliance-role') {
+      const roleId = req.body.data.options[0].options[0].value;
+      config.allianceRoleIds = [roleId];
+      config.allianceRoleEnabled = true;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Alliance Role Updated')
+        .setDescription(`Alliance registrations will assign <@&${roleId}>`)
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: alliance-role-enabled
+    if (subcommand === 'alliance-role-enabled') {
+      const enabled = req.body.data.options[0].options[0].value;
+      config.allianceRoleEnabled = enabled;
+      saveAlbionConfig(guildId, config);
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `✅ Alliance role assignment is now **${enabled ? 'enabled' : 'disabled'}**.`,
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: alliance-nickname-format
+    if (subcommand === 'alliance-nickname-format') {
+      const format = req.body.data.options[0].options[0].value;
+
+      if (format.length > 64) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '❌ Alliance nickname format is too long (max 64 characters).',
+            flags: 64
+          },
+        });
+      }
+
+      config.allianceNicknameFormat = format;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Alliance Nickname Format Updated')
+        .setDescription(
+          `**Format:** ${format}\n\n` +
+          '**Available variables:**\n' +
+          '• `{allianceTag}` - Alliance tag\n' +
+          '• `{allianceName}` - Alliance name\n' +
+          '• `{playerName}` - In-game name'
+        )
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: alliance-nickname-enabled
+    if (subcommand === 'alliance-nickname-enabled') {
+      const enabled = req.body.data.options[0].options[0].value;
+      config.allianceNicknameEnabled = enabled;
+      saveAlbionConfig(guildId, config);
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `✅ Alliance nickname updates are now **${enabled ? 'enabled' : 'disabled'}**.`,
+          flags: 64
+        },
+      });
+    }
+
+    // Subcommand: alliance-nickname-overwrite
+    if (subcommand === 'alliance-nickname-overwrite') {
+      const enabled = req.body.data.options[0].options[0].value;
+      config.allianceNicknameOverwrite = enabled;
+      saveAlbionConfig(guildId, config);
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `✅ Alliance nickname overwrite is now **${enabled ? 'enabled' : 'disabled'}**.`,
+          flags: 64
+        },
+      });
+    }
   }
 
   // "/config" command - View Albion configuration
@@ -1881,7 +1986,12 @@ export async function handleSlashCommands(req, res, client) {
           { name: 'Guild Name', value: config.albionGuildName || '*Not set*', inline: true },
           { name: 'Register Role', value: config.registerRoleId ? `<@&${config.registerRoleId}>` : '*Not set*', inline: true },
           { name: 'Guild Tag', value: config.guildTag || '*Not set*', inline: true },
-          { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false }
+          { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false },
+          { name: 'Alliance Role Assignment', value: config.allianceRoleEnabled ? 'Enabled' : 'Disabled', inline: true },
+          { name: 'Alliance Role(s)', value: (config.allianceRoleIds || []).length > 0 ? config.allianceRoleIds.map(id => `<@&${id}>`).join(', ') : '*Not set*', inline: false },
+          { name: 'Alliance Nickname Updates', value: config.allianceNicknameEnabled ? 'Enabled' : 'Disabled', inline: true },
+          { name: 'Alliance Nickname Format', value: config.allianceNicknameFormat || '[{allianceTag}] | {playerName}', inline: false },
+          { name: 'Alliance Nickname Overwrite', value: config.allianceNicknameOverwrite ? 'Enabled' : 'Disabled', inline: true }
         )
         .setFooter({ text: 'Use /set to configure these settings' })
         .setTimestamp();
@@ -2051,10 +2161,14 @@ export async function handleSlashCommands(req, res, client) {
 
       if (result.data.roleAssigned) {
         embed.addFields({ name: 'Role', value: `✅ ${result.data.roleName || 'Assigned'}`, inline: true });
+      } else if (result.data.roleWarning) {
+        embed.addFields({ name: 'Role', value: `⚠️ ${result.data.roleWarning}`, inline: false });
       }
 
       if (result.data.nicknameApplied) {
         embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      } else if (result.data.nicknameWarning) {
+        embed.addFields({ name: 'Nickname', value: `⚠️ ${result.data.nicknameWarning}`, inline: false });
       }
 
       await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {

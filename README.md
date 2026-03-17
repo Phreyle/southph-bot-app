@@ -7,6 +7,7 @@ A Discord bot for Albion Online guilds featuring automatic guild verification, c
 ## 🌟 Features
 
 - **🎮 Guild Verification** - Automatically verify members are in your Albion guild
+- **🤝 Alliance Registration** - Register alliance members with configurable roles and nicknames
 - **💰 Virtual Bank** - Track virtual currency for guild activities
 - **🎯 Content Management** - Organize group content with role signups
 - **🎫 Ticket System** - Application and support tickets
@@ -20,9 +21,9 @@ A Discord bot for Albion Online guilds featuring automatic guild verification, c
 
 1. **Register your character:**
    ```
-   /register region:americas ign:YourCharacterName
+   /register region:asia type:alliance name:YourCharacterName
    ```
-   This verifies you're in the guild and assigns you the verified role.
+   This verifies your alliance membership and applies configured alliance role/nickname settings.
 
 2. **Sign up for content:**
    - When content is posted, go to the thread
@@ -49,11 +50,14 @@ A Discord bot for Albion Online guilds featuring automatic guild verification, c
 ### Albion Verification
 | Command | Description |
 |---------|-------------|
-| `/register <region> <ign>` | Register your character (verifies guild membership) |
+| `/register region:<region> type:<alliance\|guild\|player> name:<ign>` | Register your character (alliance or guild verification) |
 | `/unregister` | Unregister your character from the system |
 | `/config view` | View guild verification settings |
 
 **Regions:** `americas`, `europe`, `asia`
+
+**Alliance Registration Example:**
+- `/register region:asia type:alliance name:LeiExample`
 
 ### Bank Commands
 | Command | Description |
@@ -78,8 +82,14 @@ When admins post content, interact in the thread using:
 | `/set register-role @role` | Set the role given to verified members |
 | `/set guild-tag <tag>` | Set guild tag for nicknames (e.g., SOUTH) |
 | `/set nickname-format <format>` | Set nickname format |
+| `/set alliance-role @role` | Set alliance registration role |
+| `/set alliance-role-enabled <true\|false>` | Enable/disable alliance role assignment |
+| `/set alliance-nickname-format <format>` | Set alliance nickname format |
+| `/set alliance-nickname-enabled <true\|false>` | Enable/disable alliance nickname updates |
+| `/set alliance-nickname-overwrite <true\|false>` | Overwrite existing nicknames on re-register |
 | `/forceunregister <ign>` | Force unregister a member by in-game name |
-| `/purge confirm` | Remove members no longer in the guild |
+| `/purge type:guild confirm:true` | Remove members no longer in the guild |
+| `/purge type:alliance confirm:true` | Remove all alliance registrations and configured alliance roles |
 
 **Nickname Format Variables:**
 - `{ign}` - In-game name
@@ -90,6 +100,18 @@ When admins post content, interact in the thread using:
 **Examples:**
 - `{tag} {ign}` → "SOUTH PlayerName"
 - `{ign} | {guild}` → "PlayerName | YourGuild"
+
+**Alliance Nickname Variables:**
+- `{allianceTag}` - Albion alliance tag
+- `{allianceName}` - Albion alliance name
+- `{playerName}` - Albion player name
+
+**Alliance Nickname Format Example:**
+- `[{allianceTag}] | {playerName}`
+
+Fallback behavior:
+- If alliance tag is missing, alliance name is used.
+- If both are missing, nickname falls back to player name only.
 
 ### Bank Management
 | Command | Description |
@@ -152,6 +174,7 @@ When admins post content, interact in the thread using:
 - Make sure you're using your exact in-game name (case-sensitive)
 - Verify you're actually in the guild in Albion Online
 - Check you selected the correct region
+- For alliance registration, use `region:asia type:alliance`
 
 **Q: How do I change my registered character?**
 - Use `/unregister` first, then `/register` with your new character
@@ -166,9 +189,8 @@ When admins post content, interact in the thread using:
 - Use `/unregister` to switch characters
 
 **Q: What happens during a purge?**
-- Bot checks all registered members against the Albion API
-- Members no longer in the guild are automatically unregistered
-- Their verified role is removed
+- `type:guild` checks registered members against guild verification and removes invalid entries
+- `type:alliance` removes all active alliance registrations and removes configured alliance role(s)
 
 ---
 

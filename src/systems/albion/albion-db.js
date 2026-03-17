@@ -85,7 +85,14 @@ export function loadAlbionConfig(guildId) {
     albionGuildName: null,
     registerRoleId: null,
     guildTag: null,
-    nicknameFormat: '{tag} {ign}'
+    nicknameFormat: '{tag} {ign}',
+    allianceRoleEnabled: true,
+    allianceRoleIds: [],
+    allianceRoleAutoCreate: false,
+    allianceNicknameEnabled: true,
+    allianceNicknameFormat: '[{allianceTag}] | {playerName}',
+    allianceNicknameOverwrite: true,
+    allianceNicknameMaxLength: 32
   };
 }
 

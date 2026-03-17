@@ -454,6 +454,71 @@ const SET_COMMAND = {
           required: true
         }
       ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'alliance-role',
+      description: 'Set base role assigned to alliance registrations',
+      options: [
+        {
+          type: 8, // ROLE
+          name: 'role',
+          description: 'Role to assign for alliance registrations',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'alliance-role-enabled',
+      description: 'Enable or disable alliance role assignment',
+      options: [
+        {
+          type: 5, // BOOLEAN
+          name: 'enabled',
+          description: 'Whether alliance role assignment is enabled',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'alliance-nickname-format',
+      description: 'Set alliance nickname format ({allianceTag}, {allianceName}, {playerName})',
+      options: [
+        {
+          type: 3,
+          name: 'format',
+          description: 'Alliance nickname format template',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'alliance-nickname-enabled',
+      description: 'Enable or disable alliance nickname updates',
+      options: [
+        {
+          type: 5, // BOOLEAN
+          name: 'enabled',
+          description: 'Whether alliance nickname updates are enabled',
+          required: true
+        }
+      ]
+    },
+    {
+      type: 1, // SUB_COMMAND
+      name: 'alliance-nickname-overwrite',
+      description: 'Control whether alliance registration overwrites existing nicknames',
+      options: [
+        {
+          type: 5, // BOOLEAN
+          name: 'enabled',
+          description: 'Whether existing nicknames are overwritten',
+          required: true
+        }
+      ]
     }
   ],
   default_member_permissions: '8', // Administrator only

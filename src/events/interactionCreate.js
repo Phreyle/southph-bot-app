@@ -69,11 +69,15 @@ export async function handleInteractionCreate(interaction) {
       }
 
       if (result.data.roleAssigned) {
-        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+        embed.addFields({ name: 'Role', value: `✅ ${result.data.roleName || 'Assigned'}`, inline: true });
+      } else if (result.data.roleWarning) {
+        embed.addFields({ name: 'Role', value: `⚠️ ${result.data.roleWarning}`, inline: false });
       }
 
       if (result.data.nicknameApplied) {
         embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      } else if (result.data.nicknameWarning) {
+        embed.addFields({ name: 'Nickname', value: `⚠️ ${result.data.nicknameWarning}`, inline: false });
       }
 
       await interaction.editReply({
@@ -187,11 +191,15 @@ export async function handleButtonInteractions(req, res, client) {
       }
 
       if (result.data.roleAssigned) {
-        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+        embed.addFields({ name: 'Role', value: `✅ ${result.data.roleName || 'Assigned'}`, inline: true });
+      } else if (result.data.roleWarning) {
+        embed.addFields({ name: 'Role', value: `⚠️ ${result.data.roleWarning}`, inline: false });
       }
 
       if (result.data.nicknameApplied) {
         embed.addFields({ name: 'Nickname', value: `✅ ${result.data.nickname}`, inline: false });
+      } else if (result.data.nicknameWarning) {
+        embed.addFields({ name: 'Nickname', value: `⚠️ ${result.data.nicknameWarning}`, inline: false });
       }
 
       await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {

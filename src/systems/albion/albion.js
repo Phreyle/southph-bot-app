@@ -16,6 +16,7 @@ import {
 } from './albion-db.js';
 
 const DEFAULT_ALLIANCE_ROLE_NAME = 'Alliance Member';
+const DEFAULT_ALLIANCE_NICKNAME_FORMAT = '[{allianceTag}] | {playerName}';
 
 async function applyNickname(guild, memberId, nickname) {
   try {
@@ -48,6 +49,36 @@ async function applyNickname(guild, memberId, nickname) {
   }
 }
 
+function formatAllianceNickname(formatTemplate, playerData) {
+  const template = (formatTemplate || DEFAULT_ALLIANCE_NICKNAME_FORMAT).trim();
+  const allianceTag = (playerData.AllianceTag || '').trim();
+  const allianceName = (playerData.AllianceName || '').trim();
+  const playerName = (playerData.Name || '').trim();
+  const effectiveAlliance = allianceTag || allianceName;
+
+  if (!effectiveAlliance) {
+    return playerName;
+  }
+
+  let nickname = template
+    .replace(/\{allianceTag\}/g, allianceTag || '')
+    .replace(/\{allianceName\}/g, allianceName || '')
+    .replace(/\{playerName\}/g, playerName || '')
+    .replace(/\{alliance\}/g, effectiveAlliance);
+
+  // Remove common artifacts when alliance values are absent.
+  nickname = nickname
+    .replace(/\[\s*\]/g, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\|\s*\|/g, '|')
+    .replace(/^\s*\|\s*/, '')
+    .replace(/\s*\|\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return nickname || playerName;
+}
+
 function formatNickname(template, variables) {
   let result = template;
 
@@ -59,13 +90,31 @@ function formatNickname(template, variables) {
   return result.replace(/\s+/g, ' ').trim();
 }
 
-async function resolveAllianceRole(guild) {
-  const existingRole = guild.roles.cache.find(
-    (role) => role.name.toLowerCase() === DEFAULT_ALLIANCE_ROLE_NAME.toLowerCase()
-  );
+async function resolveAllianceRole(guild, roleRef, allowAutoCreate) {
+  if (!roleRef) {
+    return {
+      success: false,
+      error: 'ROLE_NOT_CONFIGURED',
+      message: 'Alliance role is not configured.'
+    };
+  }
 
-  if (existingRole) {
-    return { success: true, role: existingRole, created: false };
+  const byId = guild.roles.cache.get(roleRef);
+  if (byId) {
+    return { success: true, role: byId, created: false };
+  }
+
+  const byName = guild.roles.cache.find((role) => role.name.toLowerCase() === String(roleRef).toLowerCase());
+  if (byName) {
+    return { success: true, role: byName, created: false };
+  }
+
+  if (!allowAutoCreate) {
+    return {
+      success: false,
+      error: 'ROLE_NOT_FOUND',
+      message: `Configured alliance role "${roleRef}" was not found.`
+    };
   }
 
   const botMember = guild.members.me;
@@ -73,44 +122,60 @@ async function resolveAllianceRole(guild) {
     return {
       success: false,
       error: 'MISSING_PERMISSIONS',
-      message: `Missing permission to create role "${DEFAULT_ALLIANCE_ROLE_NAME}".`
+      message: `Missing permission to create role "${roleRef}".`
     };
   }
 
   try {
     const createdRole = await guild.roles.create({
-      name: DEFAULT_ALLIANCE_ROLE_NAME,
-      reason: 'Alliance registration system setup'
+      name: String(roleRef || DEFAULT_ALLIANCE_ROLE_NAME),
+      reason: 'Alliance registration system role auto-create'
     });
     return { success: true, role: createdRole, created: true };
   } catch (error) {
-    console.error('Error creating Alliance Member role:', error);
+    console.error('Error creating configured alliance role:', error);
     return {
       success: false,
       error: 'ROLE_CREATE_FAILED',
-      message: 'Failed to create Alliance Member role.'
+      message: `Failed to create configured alliance role "${roleRef}".`
     };
   }
 }
 
 async function assignRoleByType(guild, discordId, registerType, config) {
-  let targetRoleId = null;
-  let resolvedRole = null;
+  let targetRoleIds = [];
+  const resolvedRoleNames = [];
 
   if (registerType === 'alliance') {
-    const roleResult = await resolveAllianceRole(guild);
-    if (!roleResult.success) {
-      return { success: false, assigned: false, message: roleResult.message };
+    if (!config.allianceRoleEnabled) {
+      return { success: true, assigned: false, roleName: null, warning: 'Alliance role assignment is disabled in config.' };
     }
 
-    targetRoleId = roleResult.role.id;
-    resolvedRole = roleResult.role;
+    const configuredRoles = Array.isArray(config.allianceRoleIds) && config.allianceRoleIds.length > 0
+      ? config.allianceRoleIds
+      : [];
+
+    for (const roleRef of configuredRoles) {
+      const roleResult = await resolveAllianceRole(guild, roleRef, config.allianceRoleAutoCreate === true);
+      if (!roleResult.success) {
+        return { success: true, assigned: false, roleName: null, warning: roleResult.message };
+      }
+      targetRoleIds.push(roleResult.role.id);
+      resolvedRoleNames.push(roleResult.role.name);
+    }
+
+    if (targetRoleIds.length === 0) {
+      return { success: true, assigned: false, roleName: null, warning: 'Alliance role assignment skipped: no alliance role configured.' };
+    }
   } else if (registerType === 'guild' && config.registerRoleId) {
-    targetRoleId = config.registerRoleId;
-    resolvedRole = guild.roles.cache.get(config.registerRoleId) || null;
+    targetRoleIds = [config.registerRoleId];
+    const guildRole = guild.roles.cache.get(config.registerRoleId);
+    if (guildRole) {
+      resolvedRoleNames.push(guildRole.name);
+    }
   }
 
-  if (!targetRoleId) {
+  if (targetRoleIds.length === 0) {
     return { success: true, assigned: false, roleName: null };
   }
 
@@ -120,18 +185,20 @@ async function assignRoleByType(guild, discordId, registerType, config) {
       return { success: false, assigned: false, message: 'Member not found in guild.' };
     }
 
-    if (!member.roles.cache.has(targetRoleId)) {
-      await member.roles.add(targetRoleId);
+    for (const roleId of targetRoleIds) {
+      if (!member.roles.cache.has(roleId)) {
+        await member.roles.add(roleId);
+      }
     }
 
     return {
       success: true,
       assigned: true,
-      roleName: resolvedRole?.name || (registerType === 'alliance' ? DEFAULT_ALLIANCE_ROLE_NAME : 'Registered Member')
+      roleName: resolvedRoleNames.length > 0 ? resolvedRoleNames.join(', ') : (registerType === 'alliance' ? DEFAULT_ALLIANCE_ROLE_NAME : 'Registered Member')
     };
   } catch (error) {
     console.error('Error assigning role:', error);
-    return { success: false, assigned: false, message: 'Failed to assign role.' };
+    return { success: true, assigned: false, warning: 'Failed to assign one or more configured roles.' };
   }
 }
 
@@ -195,7 +262,48 @@ export async function registerUser(guild, discordId, region, ign, playerId = nul
   const roleResult = await assignRoleByType(guild, discordId, normalizedType, config);
 
   let nicknameResult = { success: false };
-  if (config.nicknameFormat) {
+  if (normalizedType === 'alliance') {
+    if (config.allianceNicknameEnabled) {
+      try {
+        const member = await guild.members.fetch(discordId);
+        if (member) {
+          const hasPermission = guild.members.me.permissions.has('ManageNicknames');
+          const canEditMember = member.manageable;
+          const shouldOverwrite = config.allianceNicknameOverwrite !== false;
+
+          if (!hasPermission || !canEditMember) {
+            nicknameResult = {
+              success: false,
+              warning: 'Nickname update skipped due to Discord permission or role hierarchy.'
+            };
+          } else if (!shouldOverwrite && member.nickname) {
+            nicknameResult = {
+              success: false,
+              warning: 'Nickname update skipped because overwrite is disabled and member already has a nickname.'
+            };
+          } else {
+            const nicknameBase = formatAllianceNickname(config.allianceNicknameFormat, validation.data);
+            const maxLen = Number.isInteger(config.allianceNicknameMaxLength)
+              ? Math.min(Math.max(config.allianceNicknameMaxLength, 1), 32)
+              : 32;
+            const finalNickname = nicknameBase.length > maxLen ? nicknameBase.substring(0, maxLen).trim() : nicknameBase;
+            nicknameResult = await applyNickname(guild, discordId, finalNickname);
+          }
+        }
+      } catch (error) {
+        console.error('Alliance nickname update failed:', error);
+        nicknameResult = {
+          success: false,
+          warning: 'Nickname update failed unexpectedly.'
+        };
+      }
+    } else {
+      nicknameResult = {
+        success: false,
+        warning: 'Nickname updates are disabled in config.'
+      };
+    }
+  } else if (config.nicknameFormat) {
     const nicknameVars = {
       ign: validation.data.Name,
       tag: config.guildTag || validation.data.AllianceTag || '',
@@ -222,8 +330,10 @@ export async function registerUser(guild, discordId, region, ign, playerId = nul
       registerType: normalizedType,
       roleAssigned: roleResult.assigned,
       roleName: roleResult.roleName || null,
+      roleWarning: roleResult.warning || null,
       nicknameApplied: nicknameResult.success,
-      nickname: nicknameResult.nickname
+      nickname: nicknameResult.nickname,
+      nicknameWarning: nicknameResult.warning || null
     }
   };
 }
@@ -239,8 +349,14 @@ export async function purgeUsers(guild, registerType = 'guild') {
 
   if (normalizedType === 'alliance') {
     const registrations = getAlbionRegistrationsByType(guildId, 'alliance');
-    const roleResult = await resolveAllianceRole(guild);
-    const allianceRoleId = roleResult.success ? roleResult.role.id : null;
+    const configuredRoles = Array.isArray(config.allianceRoleIds) ? config.allianceRoleIds : [];
+    const resolvedRoleIds = [];
+    for (const roleRef of configuredRoles) {
+      const roleResult = await resolveAllianceRole(guild, roleRef, false);
+      if (roleResult.success) {
+        resolvedRoleIds.push(roleResult.role.id);
+      }
+    }
 
     const summary = {
       success: true,
@@ -255,8 +371,12 @@ export async function purgeUsers(guild, registerType = 'guild') {
       try {
         const member = await guild.members.fetch(registration.discord_user_id).catch(() => null);
 
-        if (member && allianceRoleId && member.roles.cache.has(allianceRoleId)) {
-          await member.roles.remove(allianceRoleId).catch(() => null);
+        if (member && resolvedRoleIds.length > 0) {
+          for (const roleId of resolvedRoleIds) {
+            if (member.roles.cache.has(roleId)) {
+              await member.roles.remove(roleId).catch(() => null);
+            }
+          }
         }
 
         removeAlbionUser(guildId, registration.discord_user_id, 'alliance');
@@ -396,10 +516,13 @@ export async function unregisterUser(guild, discordId, registerType = 'guild') {
     const member = await guild.members.fetch(discordId);
     if (member) {
       if (normalizedType === 'alliance') {
-        const roleResult = await resolveAllianceRole(guild);
-        if (roleResult.success && member.roles.cache.has(roleResult.role.id)) {
-          await member.roles.remove(roleResult.role.id);
-          roleRemoved = true;
+        const configuredRoles = Array.isArray(config.allianceRoleIds) ? config.allianceRoleIds : [];
+        for (const roleRef of configuredRoles) {
+          const roleResult = await resolveAllianceRole(guild, roleRef, false);
+          if (roleResult.success && member.roles.cache.has(roleResult.role.id)) {
+            await member.roles.remove(roleResult.role.id);
+            roleRemoved = true;
+          }
         }
       } else if (config.registerRoleId && member.roles.cache.has(config.registerRoleId)) {
         await member.roles.remove(config.registerRoleId);
