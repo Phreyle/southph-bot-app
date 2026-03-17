@@ -191,7 +191,7 @@ export async function handleApplyTicket(interaction) {
         '9️⃣ Previous guilds and reason for leaving?\n' +
         '🔟 Are you willing to join in any contents, especially CTA, since we have an alliance?\n\n' +
         '📸 Please attach a screenshot of your in-game stats.\n' +
-        ' IMPORTANT NOTE: inactive and active but not joining any contents will be kick from the guild'
+        ' *IMPORTANT NOTE*: inactive and active but not joining any contents will be kick from the guild'
       )
       .setColor(0xF1C40F);
 
