@@ -18,11 +18,13 @@ export async function handleInteractionCreate(interaction) {
 
     // Albion registration button handler
     if (customId.startsWith('albion_register_')) {
-      // Parse custom ID: albion_register_userId_region_playerId
+      // Parse custom ID: albion_register_userId_region_type_playerId
       const parts = customId.split('_');
       const userId = parts[2];
       const region = parts[3];
-      const playerId = parts.slice(4).join('_'); // Handle IDs with underscores
+      const registerType = ['alliance', 'guild', 'player'].includes(parts[4]) ? parts[4] : 'guild';
+      const playerIdStartIndex = ['alliance', 'guild', 'player'].includes(parts[4]) ? 5 : 4;
+      const playerId = parts.slice(playerIdStartIndex).join('_'); // Handle IDs with underscores
 
       // Check if the button clicker is the same user who initiated registration
       if (interaction.user.id !== userId) {
@@ -37,7 +39,7 @@ export async function handleInteractionCreate(interaction) {
       await interaction.deferReply({ ephemeral: true });
 
       // Perform registration with the player ID
-      const result = await registerUser(interaction.guild, userId, region, null, playerId);
+      const result = await registerUser(interaction.guild, userId, region, null, playerId, registerType);
 
       if (!result.success) {
         await interaction.editReply({
@@ -53,10 +55,18 @@ export async function handleInteractionCreate(interaction) {
         .setDescription(result.message)
         .addFields(
           { name: 'In-Game Name', value: result.data.ign, inline: true },
-          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Type', value: (result.data.registerType || registerType).toUpperCase(), inline: true },
           { name: 'Region', value: region.toUpperCase(), inline: true }
         )
         .setTimestamp();
+
+      if (result.data.guild) {
+        embed.addFields({ name: 'Guild', value: result.data.guild, inline: true });
+      }
+
+      if (result.data.alliance) {
+        embed.addFields({ name: 'Alliance', value: result.data.alliance, inline: true });
+      }
 
       if (result.data.roleAssigned) {
         embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
@@ -118,7 +128,9 @@ export async function handleButtonInteractions(req, res, client) {
     const parts = componentId.split('_');
     const requestUserId = parts[2];
     const region = parts[3];
-    const playerId = parts.slice(4).join('_');
+    const registerType = ['alliance', 'guild', 'player'].includes(parts[4]) ? parts[4] : 'guild';
+    const playerIdStartIndex = ['alliance', 'guild', 'player'].includes(parts[4]) ? 5 : 4;
+    const playerId = parts.slice(playerIdStartIndex).join('_');
     
     const clickerId = req.body.member?.user?.id || req.body.user?.id;
 
@@ -141,7 +153,7 @@ export async function handleButtonInteractions(req, res, client) {
 
     try {
       const guild = client.guilds.cache.get(req.body.guild_id);
-      const result = await registerUser(guild, requestUserId, region, null, playerId);
+      const result = await registerUser(guild, requestUserId, region, null, playerId, registerType);
 
       if (!result.success) {
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -161,10 +173,18 @@ export async function handleButtonInteractions(req, res, client) {
         .setDescription(result.message)
         .addFields(
           { name: 'In-Game Name', value: result.data.ign, inline: true },
-          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Type', value: (result.data.registerType || registerType).toUpperCase(), inline: true },
           { name: 'Region', value: region.toUpperCase(), inline: true }
         )
         .setTimestamp();
+
+      if (result.data.guild) {
+        embed.addFields({ name: 'Guild', value: result.data.guild, inline: true });
+      }
+
+      if (result.data.alliance) {
+        embed.addFields({ name: 'Alliance', value: result.data.alliance, inline: true });
+      }
 
       if (result.data.roleAssigned) {
         embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });

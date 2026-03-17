@@ -496,14 +496,25 @@ const REGISTER_COMMAND = {
     },
     {
       type: 3,
-      name: 'ign',
+      name: 'type',
+      description: 'Registration type',
+      required: true,
+      choices: [
+        { name: 'Alliance', value: 'alliance' },
+        { name: 'Guild', value: 'guild' },
+        { name: 'Player', value: 'player' }
+      ]
+    },
+    {
+      type: 3,
+      name: 'name',
       description: 'Your in-game name',
       required: false
     },
     {
       type: 3,
       name: 'playerid',
-      description: 'Your Player ID (alternative to IGN, use if IGN has duplicates)',
+      description: 'Your Player ID (optional alternative to name)',
       required: false
     }
   ],
@@ -542,12 +553,23 @@ const FORCEUNREGISTER_COMMAND = {
 // Albion purge command (Admin only)
 const PURGE_COMMAND = {
   name: 'purge',
-  description: 'Remove users no longer in the guild (Admin only)',
+  description: 'Purge registrations by type (Admin only)',
   options: [
     {
-      type: 1, // SUB_COMMAND
+      type: 3, // STRING
+      name: 'type',
+      description: 'Purge target',
+      required: true,
+      choices: [
+        { name: 'Alliance', value: 'alliance' },
+        { name: 'Guild', value: 'guild' }
+      ]
+    },
+    {
+      type: 5, // BOOLEAN
       name: 'confirm',
-      description: 'Confirm and execute the purge'
+      description: 'Set to true to execute purge',
+      required: true
     }
   ],
   default_member_permissions: '8', // Administrator only

@@ -38,7 +38,7 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
   description += `• \`/info <playername>\` - Search for an Albion player\n`;
   description += `• \`/bank balance [@user]\` or \`${prefix}bal [@user]\` - Check balance\n`;
   description += `• \`/bank active\` or \`${prefix}bank active\` - List all bank users\n`;
-  description += `• \`/register <region> <ign>\` or \`${prefix}register <region> <ign>\` - Register your Albion character\n`;
+  description += `• \`/register region:asia type:alliance name:<ign>\` or \`${prefix}register asia alliance <ign>\` - Register as alliance member\n`;
   description += `• \`/unregister\` or \`${prefix}unregister\` - Unregister your character\n`;
   description += `• \`/config view\` or \`${prefix}config\` - View guild verification settings\n`;
   description += `• In content threads: \`x [role]\` - Claim a role (tank, heal, etc.)\n`;
@@ -81,7 +81,8 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
     description += `• \`/set guild-tag <tag>\` - Set guild tag for nicknames\n`;
     description += `• \`/set nickname-format <format>\` - Set nickname format\n`;
     description += `• \`/forceunregister <ign>\` or \`${prefix}forceunregister <ign>\` - Force unregister by IGN\n`;
-    description += `• \`/purge confirm\` or \`${prefix}purge confirm\` - Remove invalid registrations\n`;
+    description += `• \`/purge type:alliance confirm:true\` or \`${prefix}purge alliance confirm\` - Remove alliance registrations\n`;
+    description += `• \`/purge type:guild confirm:true\` or \`${prefix}purge confirm\` - Remove invalid guild registrations\n`;
     description += `• \`/ticket setup\` - Setup a ticket panel\n`;
     description += `• \`/ticket list\` - List all ticket panels\n`;
     description += `• \`/ticket panel [panel_id]\` - Send apply button panel\n`;
@@ -138,8 +139,8 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
       `• \`/bank balance [@user]\` or \`${prefix}bal [@user]\` - Check bank balance\n` +
       `• \`/bank active\` or \`${prefix}bank active\` - List all bank users\n\n` +
       `**🎮 Albion Guild Verification:**\n` +
-      `• \`/register <region> <ign>\` or \`${prefix}register <region> <ign>\`\n` +
-      `  Register your Albion character (verifies guild membership)\n` +
+      `• \`/register region:asia type:alliance name:<ign>\` or \`${prefix}register asia alliance <ign>\`\n` +
+      `  Register your Albion character as an alliance member\n` +
       `• \`/unregister\` or \`${prefix}unregister\`\n` +
       `  Unregister your character from the system\n\n` +
       `**📝 Content Threads:**\n` +
@@ -214,7 +215,9 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
         `  View current Albion configuration\n` +
         `• \`/forceunregister <ign>\` or \`${prefix}forceunregister <ign>\`\n` +
         `  Force unregister a player by in-game name\n` +
-        `• \`/purge confirm\` or \`${prefix}purge confirm\`\n` +
+        `• \`/purge type:alliance confirm:true\` or \`${prefix}purge alliance confirm\`\n` +
+        `  Remove all alliance registrations and roles\n` +
+        `• \`/purge type:guild confirm:true\` or \`${prefix}purge confirm\`\n` +
         `  Remove users no longer in the guild (checks Albion API)\n`
       )
       .setFooter({ text: 'South PH - Albion Online Guild Bot' })

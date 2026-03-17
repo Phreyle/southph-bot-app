@@ -691,13 +691,17 @@ export async function handlePrefixCommands(message, command, args, prefix) {
   // !register command - Register user's Albion character
   if (command === 'register' || command === 'reg') {
     const region = args[0]?.toLowerCase();
-    const ign = args.slice(1).join(' ');
+    const maybeType = args[1]?.toLowerCase();
+    const hasExplicitType = ['alliance', 'guild', 'player'].includes(maybeType);
+    const registerType = hasExplicitType ? maybeType : 'guild';
+    const ign = hasExplicitType ? args.slice(2).join(' ') : args.slice(1).join(' ');
 
     if (!region || !ign) {
       await message.reply(
         `❌ Usage: \`${prefix}register <region> <ign>\`\n` +
+        `or \`${prefix}register <region> <alliance|guild|player> <ign>\`\n` +
         `**Regions:** americas, europe, asia\n` +
-        `**Example:** \`${prefix}register americas MyCharName\``
+        `**Examples:** \`${prefix}register americas MyCharName\`, \`${prefix}register asia alliance MyCharName\``
       );
       return;
     }
@@ -707,10 +711,15 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       return;
     }
 
+    if (registerType === 'alliance' && region !== 'asia') {
+      await message.reply('❌ Alliance registration currently supports only the Asia region. Use: `!register asia alliance <name>`');
+      return;
+    }
+
     const loadingMsg = await message.reply('⏳ Verifying your character with Albion API...');
 
     try {
-      const result = await registerUser(message.guild, message.author.id, region, ign);
+      const result = await registerUser(message.guild, message.author.id, region, ign, null, registerType);
 
       if (!result.success) {
         // Handle multiple matches
@@ -720,7 +729,7 @@ export async function handlePrefixCommands(message, command, args, prefix) {
             const guildInfo = player.GuildName ? `Guild: ${player.GuildName}` : 'Guild: None';
             matchesList += `${index + 1}. **${player.Name}** (Player ID: ${player.Id})\n   ${guildInfo}\n\n`;
           });
-          matchesList += `To register using Player ID, use the slash command:\n\`/register region:${region} playerid:PLAYER_ID\``;
+          matchesList += `To register using Player ID, use the slash command:\n\`/register region:${region} type:${registerType} playerid:PLAYER_ID\``;
           
           await loadingMsg.edit(matchesList);
           return;
@@ -734,6 +743,8 @@ export async function handlePrefixCommands(message, command, args, prefix) {
           errorMessage = `❌ ${result.message}`;
         } else if (result.error === 'PLAYER_NOT_FOUND') {
           errorMessage = `❌ Player **${ign}** not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Selected region is correct`;
+        } else if (result.error === 'NO_ALLIANCE') {
+          errorMessage = `❌ Player **${ign}** is not in any alliance.\n\nYou must join an alliance in-game first, then register.`;
         } else if (result.error === 'NO_GUILD') {
           errorMessage = `❌ Player **${ign}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
         } else if (result.error === 'GUILD_MISMATCH') {
@@ -753,13 +764,21 @@ export async function handlePrefixCommands(message, command, args, prefix) {
         .setDescription(result.message)
         .addFields(
           { name: 'In-Game Name', value: result.data.ign, inline: true },
-          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Type', value: registerType.toUpperCase(), inline: true },
           { name: 'Region', value: region.toUpperCase(), inline: true }
         )
         .setTimestamp();
 
+      if (result.data.guild) {
+        embed.addFields({ name: 'Guild', value: result.data.guild, inline: true });
+      }
+
+      if (result.data.alliance) {
+        embed.addFields({ name: 'Alliance', value: result.data.alliance, inline: true });
+      }
+
       if (result.data.roleAssigned) {
-        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+        embed.addFields({ name: 'Role', value: `✅ ${result.data.roleName || 'Assigned'}`, inline: true });
       }
 
       if (result.data.nicknameApplied) {
@@ -874,12 +893,53 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       return;
     }
 
-    const subcommand = args[0]?.toLowerCase();
+    const purgeType = args[0]?.toLowerCase();
+    const subcommand = args[1]?.toLowerCase();
 
-    if (subcommand !== 'confirm') {
+    // New alliance purge flow: !purge alliance confirm
+    if (purgeType === 'alliance') {
+      if (subcommand !== 'confirm') {
+        await message.reply(
+          `⚠️ **WARNING:** This will remove all alliance registrations and Alliance Member roles.\n\n` +
+          `To proceed, use: \`${prefix}purge alliance confirm\``
+        );
+        return;
+      }
+
+      const loadingMsg = await message.reply('⏳ Purging alliance registrations...');
+
+      try {
+        const result = await purgeUsers(message.guild, 'alliance');
+
+        if (!result.success) {
+          await loadingMsg.edit(`❌ Purge failed: ${result.message}`);
+          return;
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setTitle('🗑️ Alliance Purge Complete')
+          .addFields(
+            { name: 'Registrations Checked', value: String(result.checked), inline: true },
+            { name: 'Removed', value: String(result.removed), inline: true },
+            { name: 'Errors', value: String(result.errors), inline: true }
+          )
+          .setTimestamp();
+
+        await loadingMsg.edit({ content: null, embeds: [embed] });
+      } catch (error) {
+        console.error('Error in !purge alliance command:', error);
+        await loadingMsg.edit('❌ An unexpected error occurred during alliance purge.');
+      }
+
+      return;
+    }
+
+    if (purgeType !== 'confirm') {
       await message.reply(
         `⚠️ **WARNING:** This will check all registered members and remove those no longer in the guild!\n\n` +
-        `To proceed, use: \`${prefix}purge confirm\``
+        `To proceed, use: \`${prefix}purge confirm\`\n` +
+        `Alliance purge: \`${prefix}purge alliance confirm\``
       );
       return;
     }

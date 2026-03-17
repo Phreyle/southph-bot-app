@@ -1901,14 +1901,26 @@ export async function handleSlashCommands(req, res, client) {
     console.log('📝 Executing /register command');
     const guildId = req.body.guild_id;
     const userId = req.body.member?.user?.id || req.body.user?.id;
-    const region = req.body.data.options[0].value;
-    
-    // Get IGN and PlayerID options
-    const ignOption = req.body.data.options.find(opt => opt.name === 'ign');
+    const options = req.body.data.options || [];
+    const region = options.find(opt => opt.name === 'region')?.value;
+    const registerType = (options.find(opt => opt.name === 'type')?.value || 'guild').toLowerCase();
+
+    // Support both legacy (ign) and new (name) option names.
+    const ignOption = options.find(opt => opt.name === 'name') || options.find(opt => opt.name === 'ign');
     const playerIdOption = req.body.data.options.find(opt => opt.name === 'playerid');
-    
+
     const ign = ignOption?.value || null;
     const playerId = playerIdOption?.value || null;
+
+    if (registerType === 'alliance' && region !== 'asia') {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ Alliance registration currently supports only `region: asia`.',
+          flags: 64
+        }
+      });
+    }
 
     // Validate that at least one identifier is provided
     if (!ign && !playerId) {
@@ -1942,7 +1954,7 @@ export async function handleSlashCommands(req, res, client) {
       }
 
       // Perform registration
-      const result = await registerUser(guild, userId, region, ign, playerId);
+      const result = await registerUser(guild, userId, region, ign, playerId, registerType);
 
       if (!result.success) {
         // Handle multiple matches
@@ -1967,7 +1979,7 @@ export async function handleSlashCommands(req, res, client) {
           // Create buttons for each player (max 5)
           const buttons = result.players.slice(0, 5).map((player, index) => 
             new ButtonBuilder()
-              .setCustomId(`albion_register_${userId}_${region}_${player.Id}`)
+                .setCustomId(`albion_register_${userId}_${region}_${registerType}_${player.Id}`)
               .setLabel(`${index + 1}. ${player.GuildName || 'No Guild'}`)
               .setStyle(player.GuildName ? ButtonStyle.Primary : ButtonStyle.Secondary)
               .setEmoji(player.GuildName ? '✅' : '❌')
@@ -1995,6 +2007,9 @@ export async function handleSlashCommands(req, res, client) {
         } else if (result.error === 'PLAYER_NOT_FOUND') {
           const identifier = playerId ? `Player ID **${playerId}**` : `Player **${ign}**`;
           errorMessage = `❌ ${identifier} not found in **${region}** region.\n\nPlease check:\n• Spelling of your in-game name\n• Player ID is correct\n• Selected region is correct`;
+        } else if (result.error === 'NO_ALLIANCE') {
+          const playerName = result.data?.Name || ign || playerId;
+          errorMessage = `❌ Player **${playerName}** is not in any alliance.\n\nYou must join an alliance in-game first, then register.`;
         } else if (result.error === 'NO_GUILD') {
           const playerName = result.data?.Name || ign || playerId;
           errorMessage = `❌ Player **${playerName}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
@@ -2021,13 +2036,21 @@ export async function handleSlashCommands(req, res, client) {
         .setDescription(result.message)
         .addFields(
           { name: 'In-Game Name', value: result.data.ign, inline: true },
-          { name: 'Guild', value: result.data.guild, inline: true },
+          { name: 'Type', value: registerType.toUpperCase(), inline: true },
           { name: 'Region', value: region.toUpperCase(), inline: true }
         )
         .setTimestamp();
 
+      if (result.data.guild) {
+        embed.addFields({ name: 'Guild', value: result.data.guild, inline: true });
+      }
+
+      if (result.data.alliance) {
+        embed.addFields({ name: 'Alliance', value: result.data.alliance, inline: true });
+      }
+
       if (result.data.roleAssigned) {
-        embed.addFields({ name: 'Role', value: '✅ Assigned', inline: true });
+        embed.addFields({ name: 'Role', value: `✅ ${result.data.roleName || 'Assigned'}`, inline: true });
       }
 
       if (result.data.nicknameApplied) {
@@ -2242,7 +2265,14 @@ export async function handleSlashCommands(req, res, client) {
     console.log('🗑️ Executing /purge command');
     const member = req.body.member;
     const guildId = req.body.guild_id;
-    const subcommand = req.body.data.options[0].name;
+    const options = req.body.data.options || [];
+
+    // New schema: /purge type:<alliance|guild> confirm:true
+    const purgeType = (options.find(opt => opt.name === 'type')?.value || 'guild').toLowerCase();
+    const confirmValue = options.find(opt => opt.name === 'confirm')?.value;
+
+    // Legacy schema support: /purge confirm (subcommand)
+    const usesLegacySubcommand = options[0]?.name === 'confirm' && options[0]?.type === 1;
 
     // Check for administrator permission
     const isAdmin = member && member.permissions && 
@@ -2258,7 +2288,7 @@ export async function handleSlashCommands(req, res, client) {
       });
     }
 
-    if (subcommand === 'confirm') {
+    if (usesLegacySubcommand || confirmValue === true) {
       // Defer response - this will take time
       res.send({
         type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
@@ -2280,7 +2310,7 @@ export async function handleSlashCommands(req, res, client) {
         }
 
         // Perform purge
-        const result = await purgeUsers(guild);
+        const result = await purgeUsers(guild, purgeType);
 
         if (!result.success) {
           await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
@@ -2296,11 +2326,11 @@ export async function handleSlashCommands(req, res, client) {
         // Build result embed
         const embed = new EmbedBuilder()
           .setColor(0x5865F2)
-          .setTitle('🗑️ Purge Complete')
+          .setTitle(purgeType === 'alliance' ? '🗑️ Alliance Purge Complete' : '🗑️ Purge Complete')
           .addFields(
-            { name: 'Members Checked', value: String(result.checked), inline: true },
+            { name: purgeType === 'alliance' ? 'Registrations Checked' : 'Members Checked', value: String(result.checked), inline: true },
             { name: 'Removed', value: String(result.removed), inline: true },
-            { name: 'Valid', value: String(result.valid), inline: true },
+            { name: 'Valid', value: String(result.valid || 0), inline: true },
             { name: 'Errors', value: String(result.errors), inline: true }
           )
           .setTimestamp();
@@ -2327,6 +2357,14 @@ export async function handleSlashCommands(req, res, client) {
       
       return;
     }
+
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: '⚠️ Confirmation required. Use `/purge type:alliance confirm:true` for alliance cleanup.',
+        flags: 64
+      }
+    });
   }
 
   console.error(`❌ Unknown command: ${name}`);

@@ -11,6 +11,59 @@ import { DATA_DIR } from '../../config/constants.js';
 const getAlbionConfigFile = (guildId) => path.join(DATA_DIR, `albion-config-${guildId}.json`);
 const getAlbionUsersFile = (guildId) => path.join(DATA_DIR, `albion-users-${guildId}.json`);
 
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function registrationKey(discordUserId, registerType) {
+  return `${discordUserId}:${registerType}`;
+}
+
+function normalizeRegisterType(registerType) {
+  return (registerType || 'guild').toLowerCase();
+}
+
+function toLegacyView(record) {
+  return {
+    ...record,
+    discordId: record.discord_user_id,
+    ign: record.player_name,
+    region: record.albion_region,
+    guild: record.guild_name,
+    playerId: record.player_id,
+    registeredAt: record.created_at,
+    lastVerified: record.verified_at
+  };
+}
+
+function toRegistrationRecord(guildId, discordId, userData, existingRecord = null) {
+  const now = new Date().toISOString();
+  const registerType = normalizeRegisterType(userData.registerType);
+
+  const record = {
+    id: existingRecord?.id || `${discordId}-${registerType}`,
+    discord_user_id: discordId,
+    discord_guild_id: guildId,
+    albion_region: userData.region,
+    register_type: registerType,
+    player_id: userData.playerId || null,
+    player_name: userData.ign || null,
+    guild_id: userData.guildId || null,
+    guild_name: userData.guild || null,
+    alliance_id: userData.allianceId || null,
+    alliance_name: userData.allianceName || null,
+    alliance_tag: userData.allianceTag || null,
+    verified_at: now,
+    is_active: userData.isActive !== false,
+    created_at: existingRecord?.created_at || now,
+    updated_at: now
+  };
+
+  return toLegacyView(record);
+}
+
 /**
  * Load Albion configuration for a guild
  * @param {string} guildId
@@ -43,6 +96,7 @@ export function loadAlbionConfig(guildId) {
  */
 export function saveAlbionConfig(guildId, config) {
   try {
+    ensureDataDir();
     const file = getAlbionConfigFile(guildId);
     fs.writeFileSync(file, JSON.stringify(config, null, 2), 'utf8');
     console.log(`✅ Albion config saved for guild ${guildId}`);
@@ -61,7 +115,32 @@ export function loadAlbionUsers(guildId) {
     const file = getAlbionUsersFile(guildId);
     if (fs.existsSync(file)) {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      return new Map(Object.entries(data));
+      const users = new Map();
+
+      for (const [key, value] of Object.entries(data)) {
+        if (value && value.register_type) {
+          users.set(key, toLegacyView(value));
+          continue;
+        }
+
+        // Migrate legacy shape keyed by discord id.
+        if (value && value.ign) {
+          const migrated = toRegistrationRecord(guildId, value.discordId || key, {
+            registerType: 'guild',
+            region: value.region,
+            ign: value.ign,
+            guild: value.guild,
+            playerId: value.playerId,
+            isActive: true
+          }, {
+            id: `${value.discordId || key}-guild`,
+            created_at: value.registeredAt || new Date().toISOString()
+          });
+          users.set(registrationKey(migrated.discord_user_id, migrated.register_type), migrated);
+        }
+      }
+
+      return users;
     }
   } catch (error) {
     console.error(`Error loading Albion users for guild ${guildId}:`, error);
@@ -76,8 +155,31 @@ export function loadAlbionUsers(guildId) {
  */
 export function saveAlbionUsers(guildId, users) {
   try {
+    ensureDataDir();
     const file = getAlbionUsersFile(guildId);
-    const data = Object.fromEntries(users);
+    const data = {};
+
+    for (const [key, user] of users.entries()) {
+      data[key] = {
+        id: user.id,
+        discord_user_id: user.discord_user_id,
+        discord_guild_id: user.discord_guild_id,
+        albion_region: user.albion_region,
+        register_type: user.register_type,
+        player_id: user.player_id,
+        player_name: user.player_name,
+        guild_id: user.guild_id,
+        guild_name: user.guild_name,
+        alliance_id: user.alliance_id,
+        alliance_name: user.alliance_name,
+        alliance_tag: user.alliance_tag,
+        verified_at: user.verified_at,
+        is_active: user.is_active,
+        created_at: user.created_at,
+        updated_at: user.updated_at
+      };
+    }
+
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
     console.log(`✅ Albion users saved for guild ${guildId}`);
   } catch (error) {
@@ -91,9 +193,14 @@ export function saveAlbionUsers(guildId, users) {
  * @param {string} discordId
  * @returns {Object|null} User data or null
  */
-export function getAlbionUser(guildId, discordId) {
+export function getAlbionUser(guildId, discordId, registerType = 'guild') {
   const users = loadAlbionUsers(guildId);
-  return users.get(discordId) || null;
+  const key = registrationKey(discordId, normalizeRegisterType(registerType));
+  const record = users.get(key);
+  if (!record || record.is_active === false) {
+    return null;
+  }
+  return record;
 }
 
 /**
@@ -103,22 +210,27 @@ export function getAlbionUser(guildId, discordId) {
  * @param {Object} userData - { ign, region, guild, playerId }
  */
 export function saveAlbionUser(guildId, discordId, userData) {
+  const registerType = normalizeRegisterType(userData.registerType);
   const users = loadAlbionUsers(guildId);
-  
-  const now = new Date().toISOString();
-  const existingUser = users.get(discordId);
-  
-  users.set(discordId, {
-    discordId,
-    ign: userData.ign,
-    region: userData.region,
-    guild: userData.guild,
-    playerId: userData.playerId || null,
-    registeredAt: existingUser?.registeredAt || now,
-    lastVerified: now
-  });
+  const key = registrationKey(discordId, registerType);
+  const existing = users.get(key);
+  const record = toRegistrationRecord(guildId, discordId, {
+    ...userData,
+    registerType,
+    isActive: true
+  }, existing);
+
+  users.set(key, record);
   
   saveAlbionUsers(guildId, users);
+}
+
+/**
+ * Upsert registration with explicit fields.
+ */
+export function upsertAlbionRegistration(guildId, discordId, registrationData) {
+  saveAlbionUser(guildId, discordId, registrationData);
+  return getAlbionUser(guildId, discordId, registrationData.registerType);
 }
 
 /**
@@ -127,16 +239,23 @@ export function saveAlbionUser(guildId, discordId, userData) {
  * @param {string} discordId
  * @returns {boolean} True if user was removed
  */
-export function removeAlbionUser(guildId, discordId) {
+export function removeAlbionUser(guildId, discordId, registerType = 'guild') {
   const users = loadAlbionUsers(guildId);
-  const existed = users.has(discordId);
-  
-  if (existed) {
-    users.delete(discordId);
-    saveAlbionUsers(guildId, users);
+  const key = registrationKey(discordId, normalizeRegisterType(registerType));
+  const existing = users.get(key);
+
+  if (!existing) {
+    return false;
   }
-  
-  return existed;
+
+  users.set(key, {
+    ...existing,
+    is_active: false,
+    updated_at: new Date().toISOString()
+  });
+  saveAlbionUsers(guildId, users);
+
+  return true;
 }
 
 /**
@@ -144,9 +263,19 @@ export function removeAlbionUser(guildId, discordId) {
  * @param {string} guildId
  * @returns {Array} Array of user objects
  */
-export function getAllAlbionUsers(guildId) {
+export function getAllAlbionUsers(guildId, registerType = null, activeOnly = true) {
   const users = loadAlbionUsers(guildId);
-  return Array.from(users.values());
+  const normalizedType = registerType ? normalizeRegisterType(registerType) : null;
+
+  return Array.from(users.values()).filter((record) => {
+    if (normalizedType && record.register_type !== normalizedType) {
+      return false;
+    }
+    if (activeOnly && record.is_active === false) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -156,16 +285,23 @@ export function getAllAlbionUsers(guildId) {
  * @returns {Object|null} User data with discordId or null
  */
 export function findAlbionUserByIGN(guildId, ign) {
-  const users = loadAlbionUsers(guildId);
+  const users = getAllAlbionUsers(guildId, null, true);
   const normalizedIgn = ign.toLowerCase();
-  
-  for (const [discordId, userData] of users.entries()) {
-    if (userData.ign.toLowerCase() === normalizedIgn) {
+
+  for (const userData of users) {
+    if (userData.ign && userData.ign.toLowerCase() === normalizedIgn) {
       return userData;
     }
   }
   
   return null;
+}
+
+/**
+ * Get active registrations by type.
+ */
+export function getAlbionRegistrationsByType(guildId, registerType) {
+  return getAllAlbionUsers(guildId, registerType, true);
 }
 
 /**

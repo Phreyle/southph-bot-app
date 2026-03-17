@@ -69,7 +69,8 @@ export async function fetchPlayerInfo(region, playerName, options = {}) {
               GuildName: playerData.GuildName || null,
               GuildId: playerData.GuildId || null,
               AllianceName: playerData.AllianceName || null,
-              AllianceId: playerData.AllianceId || null
+              AllianceId: playerData.AllianceId || null,
+              AllianceTag: playerData.AllianceTag || null
             };
           } catch (error) {
             console.error(`Error fetching player ${player.Id}:`, error);
@@ -106,7 +107,8 @@ export async function fetchPlayerInfo(region, playerName, options = {}) {
         GuildName: playerData.GuildName || null,
         GuildId: playerData.GuildId || null,
         AllianceName: playerData.AllianceName || null,
-        AllianceId: playerData.AllianceId || null
+        AllianceId: playerData.AllianceId || null,
+        AllianceTag: playerData.AllianceTag || null
       }
     };
     
@@ -164,7 +166,8 @@ export async function fetchPlayerInfoById(region, playerId) {
         GuildName: playerData.GuildName || null,
         GuildId: playerData.GuildId || null,
         AllianceName: playerData.AllianceName || null,
-        AllianceId: playerData.AllianceId || null
+        AllianceId: playerData.AllianceId || null,
+        AllianceTag: playerData.AllianceTag || null
       }
     };
     
@@ -270,4 +273,53 @@ export async function validatePlayerGuild(region, playerName, expectedGuildName,
  */
 export async function validatePlayerGuildById(region, playerId, expectedGuildName) {
   return validatePlayerGuild(region, null, expectedGuildName, playerId);
+}
+
+/**
+ * Validate if player is in an alliance
+ * @param {string} region - Region (americas, europe, asia)
+ * @param {string} playerName - Player's in-game name
+ * @param {string} playerId - Optional Player ID for exact match
+ * @returns {Promise<Object>} Validation result
+ */
+export async function validatePlayerAlliance(region, playerName, playerId = null) {
+  let result;
+
+  if (playerId) {
+    result = await fetchPlayerInfoById(region, playerId);
+  } else {
+    const multiCheckResult = await fetchPlayerInfo(region, playerName, { returnMultiple: true });
+
+    if (multiCheckResult.success && multiCheckResult.multipleMatches && multiCheckResult.count > 1) {
+      return {
+        success: false,
+        error: 'MULTIPLE_MATCHES',
+        message: `Found ${multiCheckResult.count} players with the name "${playerName}". Please specify which one:`,
+        players: multiCheckResult.players
+      };
+    }
+
+    result = await fetchPlayerInfo(region, playerName);
+  }
+
+  if (!result.success) {
+    return result;
+  }
+
+  const playerData = result.data;
+
+  if (!playerData.AllianceId) {
+    return {
+      success: false,
+      error: 'NO_ALLIANCE',
+      message: `Player "${playerData.Name}" is not in any alliance.`,
+      data: playerData
+    };
+  }
+
+  return {
+    success: true,
+    message: `Player "${playerData.Name}" is verified in alliance "${playerData.AllianceName}".`,
+    data: playerData
+  };
 }
