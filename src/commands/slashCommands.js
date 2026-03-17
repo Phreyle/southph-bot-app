@@ -11,7 +11,7 @@ import { buildContentEmbed, autoAssignFillPlayers } from '../services/contentSer
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
-import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUserByIGN } from '../systems/albion/albion-db.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN } from '../systems/albion/albion-db.js';
 
 export async function handleSlashCommands(req, res, client) {
   const { name } = req.body.data;
@@ -2220,27 +2220,38 @@ export async function handleSlashCommands(req, res, client) {
         return;
       }
 
-      // Perform unregistration
-      const result = await unregisterUser(guild, userId);
+      // Remove both registration types so alliance-only users can unregister.
+      const unregisterAttempts = await Promise.all([
+        unregisterUser(guild, userId, 'alliance'),
+        unregisterUser(guild, userId, 'guild')
+      ]);
 
-      if (!result.success) {
+      const successful = unregisterAttempts.filter((entry) => entry.success);
+
+      if (successful.length === 0) {
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: `❌ ${result.message}`,
+            content: '❌ You are not registered in the system.',
             flags: 64
           }
         });
         return;
       }
 
+      const result = successful[0];
+      const removedTypes = successful
+        .map((entry) => (entry.data?.registerType || 'guild').toUpperCase())
+        .join(', ');
+
       // Success
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('✅ Unregistered Successfully')
-        .setDescription(`You have been unregistered from the guild verification system.`)
+        .setDescription('Your registration has been removed from the verification system.')
         .addFields(
           { name: 'Previous IGN', value: result.data.ign, inline: true },
+          { name: 'Removed Type(s)', value: removedTypes, inline: true },
           { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
           { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
         )
@@ -2310,10 +2321,10 @@ export async function handleSlashCommands(req, res, client) {
         return;
       }
 
-      // Find user by IGN
-      const userData = findAlbionUserByIGN(guildId, ign);
+      // Find all matching users by IGN
+      const matchedUsers = findAlbionUsersByIGN(guildId, ign);
       
-      if (!userData) {
+      if (!matchedUsers || matchedUsers.length === 0) {
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
@@ -2324,30 +2335,45 @@ export async function handleSlashCommands(req, res, client) {
         return;
       }
 
-      // Unregister the found user
-      const result = await unregisterUser(guild, userData.discordId);
+      const unregisterResults = [];
+      for (const userData of matchedUsers) {
+        const targetDiscordId = userData.discord_user_id || userData.discordId;
+        const targetType = userData.register_type || userData.registerType || 'guild';
+        const result = await unregisterUser(guild, targetDiscordId, targetType);
+        unregisterResults.push({ userData, result, targetType });
+      }
 
-      if (!result.success) {
+      const successful = unregisterResults.filter((entry) => entry.result.success);
+      if (successful.length === 0) {
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: `❌ Failed to unregister: ${result.message}`,
+            content: '❌ Failed to unregister matched player record(s).',
             flags: 64
           }
         });
         return;
       }
 
+      const sample = successful[0];
+      const removedUsers = successful
+        .map((entry) => {
+          const uid = entry.userData.discord_user_id || entry.userData.discordId;
+          const type = (entry.targetType || 'guild').toUpperCase();
+          return `<@${uid}> (${type})`;
+        })
+        .join(', ');
+
       // Success
       const embed = new EmbedBuilder()
         .setColor(0xFEE75C)
         .setTitle('⚠️ Force Unregistered')
-        .setDescription(`Successfully force-unregistered player from the system.`)
+        .setDescription('Successfully force-unregistered matching player record(s).')
         .addFields(
-          { name: 'IGN', value: result.data.ign, inline: true },
-          { name: 'Discord User', value: `<@${userData.discordId}>`, inline: true },
-          { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
-          { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
+          { name: 'IGN', value: sample.result.data.ign, inline: true },
+          { name: 'Removed Record(s)', value: removedUsers, inline: false },
+          { name: 'Role Removed', value: sample.result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
+          { name: 'Nickname Reset', value: sample.result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
         )
         .setTimestamp();
 

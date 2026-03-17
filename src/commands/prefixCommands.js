@@ -12,7 +12,7 @@ import {
 } from '../systems/ticket/ticket-commands.js';
 import { createApplyPanelMessage } from '../systems/ticket/ticket-system.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
-import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUserByIGN } from '../systems/albion/albion-db.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN } from '../systems/albion/albion-db.js';
 import axios from 'axios';
 
 export async function handlePrefixCommands(message, command, args, prefix) {
@@ -916,19 +916,30 @@ export async function handlePrefixCommands(message, command, args, prefix) {
     const loadingMsg = await message.reply('⏳ Processing your unregistration...');
 
     try {
-      const result = await unregisterUser(message.guild, message.author.id);
+      const unregisterAttempts = await Promise.all([
+        unregisterUser(message.guild, message.author.id, 'alliance'),
+        unregisterUser(message.guild, message.author.id, 'guild')
+      ]);
 
-      if (!result.success) {
-        await loadingMsg.edit(`❌ ${result.message}`);
+      const successful = unregisterAttempts.filter((entry) => entry.success);
+
+      if (successful.length === 0) {
+        await loadingMsg.edit('❌ You are not registered in the system.');
         return;
       }
+
+      const result = successful[0];
+      const removedTypes = successful
+        .map((entry) => (entry.data?.registerType || 'guild').toUpperCase())
+        .join(', ');
 
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('✅ Unregistered Successfully')
-        .setDescription(`You have been unregistered from the guild verification system.`)
+        .setDescription('Your registration has been removed from the verification system.')
         .addFields(
           { name: 'Previous IGN', value: result.data.ign, inline: true },
+          { name: 'Removed Type(s)', value: removedTypes, inline: true },
           { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
           { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
         )
@@ -964,31 +975,46 @@ export async function handlePrefixCommands(message, command, args, prefix) {
     const loadingMsg = await message.reply('⏳ Finding and unregistering player...');
 
     try {
-      // Find user by IGN
-      const userData = findAlbionUserByIGN(message.guild.id, ign);
+      // Find matching users by IGN
+      const matchedUsers = findAlbionUsersByIGN(message.guild.id, ign);
       
-      if (!userData) {
+      if (!matchedUsers || matchedUsers.length === 0) {
         await loadingMsg.edit(`❌ No registration found for IGN: **${ign}**`);
         return;
       }
 
-      // Unregister the found user
-      const result = await unregisterUser(message.guild, userData.discordId);
+      const unregisterResults = [];
+      for (const userData of matchedUsers) {
+        const targetDiscordId = userData.discord_user_id || userData.discordId;
+        const targetType = userData.register_type || userData.registerType || 'guild';
+        const result = await unregisterUser(message.guild, targetDiscordId, targetType);
+        unregisterResults.push({ userData, result, targetType });
+      }
 
-      if (!result.success) {
-        await loadingMsg.edit(`❌ Failed to unregister: ${result.message}`);
+      const successful = unregisterResults.filter((entry) => entry.result.success);
+      if (successful.length === 0) {
+        await loadingMsg.edit('❌ Failed to unregister matched player record(s).');
         return;
       }
+
+      const sample = successful[0];
+      const removedUsers = successful
+        .map((entry) => {
+          const uid = entry.userData.discord_user_id || entry.userData.discordId;
+          const type = (entry.targetType || 'guild').toUpperCase();
+          return `<@${uid}> (${type})`;
+        })
+        .join(', ');
 
       const embed = new EmbedBuilder()
         .setColor(0xFEE75C)
         .setTitle('⚠️ Force Unregistered')
-        .setDescription(`Successfully force-unregistered player from the system.`)
+        .setDescription('Successfully force-unregistered matching player record(s).')
         .addFields(
-          { name: 'IGN', value: result.data.ign, inline: true },
-          { name: 'Discord User', value: `<@${userData.discordId}>`, inline: true },
-          { name: 'Role Removed', value: result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
-          { name: 'Nickname Reset', value: result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
+          { name: 'IGN', value: sample.result.data.ign, inline: true },
+          { name: 'Removed Record(s)', value: removedUsers, inline: false },
+          { name: 'Role Removed', value: sample.result.data.roleRemoved ? '✅ Yes' : '⚠️ No', inline: true },
+          { name: 'Nickname Reset', value: sample.result.data.nicknameReset ? '✅ Yes' : '⚠️ No', inline: true }
         )
         .setTimestamp();
 

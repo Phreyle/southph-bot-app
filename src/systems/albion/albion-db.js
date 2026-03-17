@@ -305,6 +305,21 @@ export function findAlbionUserByIGN(guildId, ign) {
 }
 
 /**
+ * Find all active users by in-game name (case-insensitive)
+ * @param {string} guildId
+ * @param {string} ign
+ * @returns {Array} Matched user registrations
+ */
+export function findAlbionUsersByIGN(guildId, ign) {
+  const users = getAllAlbionUsers(guildId, null, true);
+  const normalizedIgn = ign.toLowerCase();
+
+  return users.filter((userData) =>
+    userData.ign && userData.ign.toLowerCase() === normalizedIgn
+  );
+}
+
+/**
  * Get active registrations by type.
  */
 export function getAlbionRegistrationsByType(guildId, registerType) {
