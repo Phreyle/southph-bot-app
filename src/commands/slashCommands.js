@@ -234,7 +234,7 @@ export async function handleSlashCommands(req, res, client) {
       contentState.demassNotice = demassNotice;
       contentState.targetCount = targetCount;
 
-      // Reset roles (for ROA/GCAMPS/Tracking/Avadungeon)
+      // Reset roles (for ROA/GCAMPS/Tracking/Avadungeon/ROAPVP/RCK/RCB)
       contentState.roles = {
         tank: null,
         heal: null,
@@ -255,7 +255,23 @@ export async function handleSlashCommands(req, res, client) {
         dps1: null,
         dps2: null,
         dps3: null,
-        dps4: null
+        dps4: null,
+        // ROA PVE/P roles
+        blaze: null,
+        sc: null,
+        perma: null,
+        lc: null,
+        // RCK roles
+        longbow: null,
+        realmbreaker: null,
+        kingmaker: null,
+        heron: null,
+        bloodletter: null,
+        // RCB roles
+        realmcarving: null,
+        brawl1: null,
+        brawl2: null,
+        brawl3: null
       };
 
       // Reset categories (for CTA/FF)
@@ -378,19 +394,22 @@ export async function handleSlashCommands(req, res, client) {
       // Validate role for content type
       const validRoles = {
         'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
+        'roapvp': ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'],
         'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
         'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
         'avadungeon': ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
+        'rck': ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'],
+        'rcb': ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'],
         'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
         'ff': ['tank', 'heal', 'dps']
       };
 
-      if (!validRoles[contentState.contentType].includes(roleOption)) {
+      if (!validRoles[contentState.contentType]?.includes(roleOption)) {
         const contentTypeName = contentState.contentType.toUpperCase();
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `❌ The role **${roleOption}** is not valid for **${contentTypeName}** content!\n\nValid roles for ${contentTypeName}: ${validRoles[contentState.contentType].map(r => `\`${r}\``).join(', ')}`,
+            content: `❌ The role **${roleOption}** is not valid for **${contentTypeName}** content!\n\nValid roles for ${contentTypeName}: ${(validRoles[contentState.contentType] || []).map(r => `\`${r}\``).join(', ')}`,
             flags: 64
           },
         });
@@ -507,9 +526,12 @@ export async function handleSlashCommands(req, res, client) {
       // Validate role for content type
       const validRoles = {
         'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
+        'roapvp': ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'],
         'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
         'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
         'avadungeon': ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
+        'rck': ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'],
+        'rcb': ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'],
         'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
         'ff': ['tank', 'heal', 'dps']
       };

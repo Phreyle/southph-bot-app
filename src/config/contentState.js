@@ -4,7 +4,7 @@ export const contentState = {
   messageId: null,
   channelId: null,
   threadId: null,
-  contentType: 'ff', // roa, cta, gcamps, ff, tracking, avadungeon
+  contentType: 'ff', // roa, roapvp, cta, gcamps, ff, tracking, avadungeon, rck, rcb
   title: '',
   zone: 'Brecilien',
   tier: 7,
@@ -12,11 +12,14 @@ export const contentState = {
   demassNotice: '',
   targetCount: 10, // for FF only
 
-  // For ROA/GCAMPS/AVADUNGEON (fixed slots)
-  // ROA uses: tank, heal, mp, mp2, shadowcaller, blazing, flex (7 slots)
+  // For ROA/GCAMPS/AVADUNGEON/RCK/RCB (fixed slots)
+  // ROA PVE uses: tank, heal, mp, mp2, shadowcaller, blazing, flex (7 slots)
+  // ROA PVE/P uses: tank, heal, blaze, sc, perma, lc, mp (7 slots)
   // GCAMPS uses: tank, heal, shadowcaller, blazing, badon (5 slots)
   // TRACKING uses: tank, heal, dpair, hpcut, flexdps (5 slots)
   // AVADUNGEON uses: tank, offtank, stun, mainhealer, partyhealer, shadowcaller, dps1, dps2, dps3, dps4 (10 slots)
+  // RCK uses: tank, heal, longbow, realmbreaker, kingmaker, heron, bloodletter (7 slots)
+  // RCB uses: tank, heal, realmcarving, longbow, brawl1, brawl2, brawl3 (7 slots)
   roles: {
     tank: null,
     offtank: null,
@@ -36,7 +39,23 @@ export const contentState = {
     dps1: null,
     dps2: null,
     dps3: null,
-    dps4: null
+    dps4: null,
+    // ROA PVE/P roles
+    blaze: null,
+    sc: null,
+    perma: null,
+    lc: null,
+    // RCK roles
+    longbow: null,
+    realmbreaker: null,
+    kingmaker: null,
+    heron: null,
+    bloodletter: null,
+    // RCB roles
+    realmcarving: null,
+    brawl1: null,
+    brawl2: null,
+    brawl3: null
   },
 
   // For CTA/FF (category lists)

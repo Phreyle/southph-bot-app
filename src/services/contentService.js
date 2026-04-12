@@ -7,14 +7,17 @@ export const buildContentEmbed = () => {
   const contentType = contentState.contentType;
   const contentEmoji = {
     'roa': '🏰',
+    'roapvp': '⚔️',
     'cta': '⚔️',
     'gcamps': '🏕️',
     'ff': '🛡️',
     'tracking': '🎯',
-    'avadungeon': '⚔️'
+    'avadungeon': '⚔️',
+    'rck': '🏹',
+    'rcb': '🥊'
   }[contentType] || '🎮';
 
-  // ROA - Fixed 7 slots
+  // ROA PVE - Fixed 7 slots
   if (contentType === 'roa') {
     const roleLines = [
       `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
@@ -29,31 +32,52 @@ export const buildContentEmbed = () => {
     const roaRoles = ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'];
     const filledSlots = roaRoles.filter(key => contentState.roles[key] !== null).length;
     const fillCount = contentState.fill.length;
-    const minSlotsBeforeFill = 6;
-    const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
 
-    let fillSection = '';
-    if (fillCount > 0) {
-      const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
-      fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
-      if (fillStatus === 'STANDBY') {
-        fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
-      }
-    }
-
-    let statusLine = `**Status:** ${filledSlots}/7`;
-    if (fillCount > 0 && fillStatus === 'STANDBY') {
-      statusLine += ` (${fillCount} in FILL standby)`;
-    }
+    const fillSection = fillCount > 0
+      ? `\n\n**🔄 FILL (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`
+      : '';
 
     return new EmbedBuilder()
       .setColor(0x5865F2)
-      .setTitle(`${contentEmoji} ROA Role Call`)
+      .setTitle(`${contentEmoji} ROA PVE Role Call`)
       .setDescription(
         `**__X UP ROLE!__**\n` +
         `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
         `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
-        `${statusLine}\n\n` +
+        `**Status:** ${filledSlots}/7\n\n` +
+        roleLines.join('\n') +
+        fillSection
+      );
+  }
+
+  // ROA PVE/P - Fixed 7 slots (PVE + PVP Hybrid)
+  if (contentType === 'roapvp') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEAL (heal)**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} BLAZE/DAWNSONG (blaze)**   ${contentState.roles.blaze ? '➡️ <@' + contentState.roles.blaze + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DEBUFF} SC/DTANK (sc)**   ${contentState.roles.sc ? '➡️ <@' + contentState.roles.sc + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} PERMA (perma)**   ${contentState.roles.perma ? '➡️ <@' + contentState.roles.perma + '>' : ''}`,
+      `**6. ${CUSTOM_EMOJIS.DPS} LIGHTCALLER (lc)**   ${contentState.roles.lc ? '➡️ <@' + contentState.roles.lc + '>' : ''}`,
+      `**7. ${CUSTOM_EMOJIS.DPS} MP (mp)**   ${contentState.roles.mp ? '➡️ <@' + contentState.roles.mp + '>' : ''}`
+    ];
+
+    const roapvpRoles = ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'];
+    const filledSlots = roapvpRoles.filter(key => contentState.roles[key] !== null).length;
+    const fillCount = contentState.fill.length;
+
+    const fillSection = fillCount > 0
+      ? `\n\n**🔄 FILL (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`
+      : '';
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} ROA PVE/P Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `**Status:** ${filledSlots}/7\n\n` +
         roleLines.join('\n') +
         fillSection
       );
@@ -72,22 +96,12 @@ export const buildContentEmbed = () => {
     const gcampsRoles = ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'];
     const filledSlots = gcampsRoles.filter(key => contentState.roles[key] !== null).length;
     const fillCount = contentState.fill.length;
-    const minSlotsBeforeFill = 4;
-    const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
 
-    let fillSection = '';
-    if (fillCount > 0) {
-      const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
-      fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
-      if (fillStatus === 'STANDBY') {
-        fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
-      }
-    }
+    const fillSection = fillCount > 0
+      ? `\n\n**🔄 FILL (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`
+      : '';
 
-    let statusLine = `**Status:** ${filledSlots}/5`;
-    if (fillCount > 0 && fillStatus === 'STANDBY') {
-      statusLine += ` (${fillCount} in FILL standby)`;
-    }
+    const statusLine = `**Status:** ${filledSlots}/5`;
 
     return new EmbedBuilder()
       .setColor(0x5865F2)
@@ -147,22 +161,12 @@ export const buildContentEmbed = () => {
     const avadungeonRoles = ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'];
     const filledSlots = avadungeonRoles.filter(key => contentState.roles[key] !== null).length;
     const fillCount = contentState.fill.length;
-    const minSlotsBeforeFill = 8;
-    const fillStatus = filledSlots >= minSlotsBeforeFill ? 'FILLING' : 'STANDBY';
 
-    let fillSection = '';
-    if (fillCount > 0) {
-      const fillStatusEmoji = fillStatus === 'STANDBY' ? '⏸️' : '🔄';
-      fillSection = `\n\n**${fillStatusEmoji} FILL - ${fillStatus} (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`;
-      if (fillStatus === 'STANDBY') {
-        fillSection += `\n*Will auto-fill when ${minSlotsBeforeFill}+ slots are taken*`;
-      }
-    }
+    const fillSection = fillCount > 0
+      ? `\n\n**🔄 FILL (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`
+      : '';
 
-    let statusLine = `**Status:** ${filledSlots}/10`;
-    if (fillCount > 0 && fillStatus === 'STANDBY') {
-      statusLine += ` (${fillCount} in FILL standby)`;
-    }
+    const statusLine = `**Status:** ${filledSlots}/10`;
 
     return new EmbedBuilder()
       .setColor(0x5865F2)
@@ -302,61 +306,106 @@ export const buildContentEmbed = () => {
         categoryLines.join('\n')
       );
   }
+  // RCK - AVA ROAM CLAP KITE - Fixed 7 slots
+  if (contentType === 'rck') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEAL (heal)**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} LONGBOW (longbow)**   ${contentState.roles.longbow ? '➡️ <@' + contentState.roles.longbow + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} REALMBREAKER (realmbreaker)**   ${contentState.roles.realmbreaker ? '➡️ <@' + contentState.roles.realmbreaker + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} KINGMAKER (kingmaker)**   ${contentState.roles.kingmaker ? '➡️ <@' + contentState.roles.kingmaker + '>' : ''}`,
+      `**6. ${CUSTOM_EMOJIS.DPS} HERON (heron)**   ${contentState.roles.heron ? '➡️ <@' + contentState.roles.heron + '>' : ''}`,
+      `**7. ${CUSTOM_EMOJIS.DPS} BLOODLETTER (bloodletter)**   ${contentState.roles.bloodletter ? '➡️ <@' + contentState.roles.bloodletter + '>' : ''}`
+    ];
+
+    const rckRoles = ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'];
+    const filledSlots = rckRoles.filter(key => contentState.roles[key] !== null).length;
+    const fillCount = contentState.fill.length;
+
+    const fillSection = fillCount > 0
+      ? `\n\n**🔄 FILL (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`
+      : '';
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} AVA ROAM CLAP KITE (RCK) Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `**Status:** ${filledSlots}/7\n\n` +
+        roleLines.join('\n') +
+        fillSection
+      );
+  }
+
+  // RCB - AVA ROAM CLAP BRAWL - Fixed 7 slots
+  if (contentType === 'rcb') {
+    const roleLines = [
+      `**1. ${CUSTOM_EMOJIS.OFFTANK} TANK (tank)**   ${contentState.roles.tank ? '➡️ <@' + contentState.roles.tank + '>' : ''}`,
+      `**2. ${CUSTOM_EMOJIS.HEALER} HEAL (heal)**   ${contentState.roles.heal ? '➡️ <@' + contentState.roles.heal + '>' : ''}`,
+      `**3. ${CUSTOM_EMOJIS.DPS} REALMBREAKER/CARVING (realmcarving)**   ${contentState.roles.realmcarving ? '➡️ <@' + contentState.roles.realmcarving + '>' : ''}`,
+      `**4. ${CUSTOM_EMOJIS.DPS} LONGBOW (longbow)**   ${contentState.roles.longbow ? '➡️ <@' + contentState.roles.longbow + '>' : ''}`,
+      `**5. ${CUSTOM_EMOJIS.DPS} BRAWL DPS (brawl1)**   ${contentState.roles.brawl1 ? '➡️ <@' + contentState.roles.brawl1 + '>' : ''}`,
+      `**6. ${CUSTOM_EMOJIS.DPS} BRAWL DPS (brawl2)**   ${contentState.roles.brawl2 ? '➡️ <@' + contentState.roles.brawl2 + '>' : ''}`,
+      `**7. ${CUSTOM_EMOJIS.DPS} BRAWL DPS (brawl3)**   ${contentState.roles.brawl3 ? '➡️ <@' + contentState.roles.brawl3 + '>' : ''}`
+    ];
+
+    const rcbRoles = ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'];
+    const filledSlots = rcbRoles.filter(key => contentState.roles[key] !== null).length;
+    const fillCount = contentState.fill.length;
+
+    const fillSection = fillCount > 0
+      ? `\n\n**🔄 FILL (${fillCount}):** ${contentState.fill.map(id => `<@${id}>`).join(', ')}`
+      : '';
+
+    return new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`${contentEmoji} AVA ROAM CLAP BRAWL (RCB) Role Call`)
+      .setDescription(
+        `**__X UP ROLE!__**\n` +
+        `**Zone:** ${contentState.zone}\n**Gear:** T${contentState.tier} Sets\n**Time:** ${contentState.time}\n` +
+        `${contentState.demassNotice ? `**Demass:** ${contentState.demassNotice}\n` : ''}` +
+        `**Status:** ${filledSlots}/7\n\n` +
+        roleLines.join('\n') +
+        fillSection
+      );
+  }
 };
 
-// Auto-assign fill players to empty slots (ROA/GCAMPS only)
+// Auto-assign fill players to empty slots immediately (no threshold)
 export async function autoAssignFillPlayers(client) {
-  // Only for ROA/GCAMPS/AVADUNGEON (fixed slots)
-  if (contentState.contentType !== 'roa' && contentState.contentType !== 'gcamps' && contentState.contentType !== 'avadungeon') {
-    return;
-  }
+  const fixedSlotTypes = ['roa', 'roapvp', 'gcamps', 'avadungeon', 'rck', 'rcb'];
+  if (!fixedSlotTypes.includes(contentState.contentType)) return;
 
-  let roleKeys, totalSlots, minSlotsBeforeFill;
-
+  let roleKeys;
   if (contentState.contentType === 'roa') {
     roleKeys = ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'];
-    totalSlots = 7;
-    minSlotsBeforeFill = 6;
+  } else if (contentState.contentType === 'roapvp') {
+    roleKeys = ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'];
   } else if (contentState.contentType === 'gcamps') {
     roleKeys = ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'];
-    totalSlots = 5;
-    minSlotsBeforeFill = 4;
-  } else { // avadungeon
+  } else if (contentState.contentType === 'avadungeon') {
     roleKeys = ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'];
-    totalSlots = 10;
-    minSlotsBeforeFill = 8;
+  } else if (contentState.contentType === 'rck') {
+    roleKeys = ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'];
+  } else { // rcb
+    roleKeys = ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'];
   }
 
-  // Count how many slots are currently filled (not null)
-  const filledSlots = roleKeys.filter(key => contentState.roles[key] !== null).length;
-
-  if (filledSlots < minSlotsBeforeFill) {
-    // Not enough slots filled yet, keep fill players in standby
-    console.log(`⏸️ Fill players on standby: ${filledSlots}/${totalSlots} slots filled (need ${minSlotsBeforeFill})`);
-    return;
-  }
-
-  // Now we're at threshold or more slots, start assigning fill players
-  console.log(`✅ Auto-assigning fill players: ${filledSlots}/${totalSlots} slots filled`);
-
+  // Assign ALL fill players to available empty slots immediately
   while (contentState.fill.length > 0) {
-    // Find first empty slot
     const emptySlot = roleKeys.find(key => contentState.roles[key] === null);
+    if (!emptySlot) break; // All slots full, remaining fill players wait
 
-    if (!emptySlot) {
-      // No empty slots, break
-      break;
-    }
-
-    // Assign first fill player to empty slot
     const fillPlayerId = contentState.fill.shift();
     contentState.roles[emptySlot] = fillPlayerId;
+    console.log(`✅ Fill assigned: <@${fillPlayerId}> → ${emptySlot.toUpperCase()}`);
 
-    // Try to notify the player
     try {
       const channel = await client.channels.fetch(contentState.threadId);
       if (channel) {
-        await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}** from FILL standby!`);
+        await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${emptySlot.toUpperCase()}** from FILL!`);
       }
     } catch (err) {
       console.error('Error notifying fill player:', err);

@@ -20,8 +20,8 @@ export async function handleMessageCreate(message, client) {
     if (/^x\s+cancel$/i.test(content)) {
       let foundRole = false;
 
-      // For ROA/GCAMPS/Tracking/Avadungeon (fixed slots)
-      if (contentType === 'roa' || contentType === 'gcamps' || contentType === 'tracking' || contentType === 'avadungeon') {
+      // For ROA/GCAMPS/ROAPVP/RCK/RCB/Tracking/Avadungeon (fixed slots)
+      if (contentType === 'roa' || contentType === 'roapvp' || contentType === 'gcamps' || contentType === 'tracking' || contentType === 'avadungeon' || contentType === 'rck' || contentType === 'rcb') {
         for (const [roleKey, userId] of Object.entries(contentState.roles)) {
           if (userId === message.author.id) {
             contentState.roles[roleKey] = null;
@@ -74,9 +74,9 @@ export async function handleMessageCreate(message, client) {
     
     // Check for "x fill" command (ROA/GCAMPS/AVADUNGEON only)
     if (/^x\s+fill$/i.test(content)) {
-      // Only for ROA/GCAMPS/AVADUNGEON
-      if (contentType !== 'roa' && contentType !== 'gcamps' && contentType !== 'avadungeon') {
-        await message.reply('❌ Fill is only available for ROA, Group Camps, and Ava Dungeon.');
+      // Only for fixed-slot types with fill
+      if (contentType !== 'roa' && contentType !== 'roapvp' && contentType !== 'gcamps' && contentType !== 'avadungeon' && contentType !== 'rck' && contentType !== 'rcb') {
+        await message.reply('❌ Fill is only available for ROA PVE, ROA PVE/P, Group Camps, Ava Dungeon, RCK, and RCB.');
         return;
       }
 
@@ -175,6 +175,162 @@ export async function handleMessageCreate(message, client) {
             body: {
               embeds: [embed.toJSON()]
             },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
+    }
+
+    // === ROA PVE/P - Fixed slot assignment ===
+    if (contentType === 'roapvp') {
+      const rolePatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        blaze: /^x\s+(blaze|blazing|dawnsong|b)$/i,
+        sc: /^x\s+(sc|dtank|shadowcaller|shadow)$/i,
+        perma: /^x\s+(perma|p)$/i,
+        lc: /^x\s+(lc|lightcaller|light)$/i,
+        mp: /^x\s+(mp|mist|piercer)$/i
+      };
+
+      let assignedRole = null;
+
+      for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+        if (pattern.test(content)) {
+          if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+            await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
+            return;
+          }
+          if (contentState.roles[roleKey] === message.author.id) {
+            await message.react('ℹ️');
+            return;
+          }
+          for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
+            if (existingUserId === message.author.id) contentState.roles[existingRoleKey] = null;
+          }
+          const fillIndex = contentState.fill.indexOf(message.author.id);
+          if (fillIndex > -1) contentState.fill.splice(fillIndex, 1);
+          contentState.roles[roleKey] = message.author.id;
+          assignedRole = roleKey;
+          break;
+        }
+      }
+
+      if (assignedRole) {
+        await autoAssignFillPlayers(client);
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: { embeds: [embed.toJSON()] },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
+    }
+
+    // === RCK - AVA ROAM CLAP KITE - Fixed slot assignment ===
+    if (contentType === 'rck') {
+      const rolePatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        longbow: /^x\s+(longbow|lb)$/i,
+        realmbreaker: /^x\s+(realmbreaker|rb|realm)$/i,
+        kingmaker: /^x\s+(kingmaker|km|king)$/i,
+        heron: /^x\s+(heron|hr)$/i,
+        bloodletter: /^x\s+(bloodletter|bl|blood)$/i
+      };
+
+      let assignedRole = null;
+
+      for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+        if (pattern.test(content)) {
+          if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+            await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
+            return;
+          }
+          if (contentState.roles[roleKey] === message.author.id) {
+            await message.react('ℹ️');
+            return;
+          }
+          for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
+            if (existingUserId === message.author.id) contentState.roles[existingRoleKey] = null;
+          }
+          const fillIndex = contentState.fill.indexOf(message.author.id);
+          if (fillIndex > -1) contentState.fill.splice(fillIndex, 1);
+          contentState.roles[roleKey] = message.author.id;
+          assignedRole = roleKey;
+          break;
+        }
+      }
+
+      if (assignedRole) {
+        await autoAssignFillPlayers(client);
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: { embeds: [embed.toJSON()] },
+          });
+          await message.react('✅');
+        } catch (err) {
+          console.error('Error updating content message:', err);
+          await message.reply('❌ Failed to update the content board.');
+        }
+      }
+      return;
+    }
+
+    // === RCB - AVA ROAM CLAP BRAWL - Fixed slot assignment ===
+    if (contentType === 'rcb') {
+      const rolePatterns = {
+        tank: /^x\s+(tank|t)$/i,
+        heal: /^x\s+(heal|healer|h)$/i,
+        realmcarving: /^x\s+(realmcarving|realmbreaker|carving|rc|rb)$/i,
+        longbow: /^x\s+(longbow|lb)$/i,
+        brawl1: /^x\s+(brawl1|brawl|bw1|bw)$/i,
+        brawl2: /^x\s+(brawl2|bw2)$/i,
+        brawl3: /^x\s+(brawl3|bw3)$/i
+      };
+
+      let assignedRole = null;
+
+      for (const [roleKey, pattern] of Object.entries(rolePatterns)) {
+        if (pattern.test(content)) {
+          if (contentState.roles[roleKey] && contentState.roles[roleKey] !== message.author.id) {
+            await message.reply(`❌ ${roleKey.toUpperCase()} slot is already taken by <@${contentState.roles[roleKey]}>!`);
+            return;
+          }
+          if (contentState.roles[roleKey] === message.author.id) {
+            await message.react('ℹ️');
+            return;
+          }
+          for (const [existingRoleKey, existingUserId] of Object.entries(contentState.roles)) {
+            if (existingUserId === message.author.id) contentState.roles[existingRoleKey] = null;
+          }
+          const fillIndex = contentState.fill.indexOf(message.author.id);
+          if (fillIndex > -1) contentState.fill.splice(fillIndex, 1);
+          contentState.roles[roleKey] = message.author.id;
+          assignedRole = roleKey;
+          break;
+        }
+      }
+
+      if (assignedRole) {
+        await autoAssignFillPlayers(client);
+        try {
+          const embed = buildContentEmbed();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: { embeds: [embed.toJSON()] },
           });
           await message.react('✅');
         } catch (err) {
