@@ -189,8 +189,8 @@ export async function handleSlashCommands(req, res, client) {
     const member = req.body.member;
     const guildId = req.body.guild_id;
 
-    // Check Content Admin permission for create, reset, adduser, removeuser
-    if (['create', 'reset', 'adduser', 'removeuser'].includes(subcommand)) {
+    // Check Content Admin permission for create, adduser, removeuser
+    if (['create', 'adduser', 'removeuser'].includes(subcommand)) {
       if (!hasPermissionSlash(member, 'contentAdminRoles', guildId)) {
         return res.send({          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -201,19 +201,9 @@ export async function handleSlashCommands(req, res, client) {
       }
     }
 
-    // Subcommand: create
+    // Subcommand: create (always allowed — overwrites any existing callout)
     if (subcommand === 'create') {
       console.log('   Creating content thread...');
-      if (contentState.active) {
-        console.log('   ❌ Content already active');
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: '❌ A content callout is already active! Use `/content reset` to clear it first.',
-            flags: 64
-          },
-        });
-      }
 
       const contentType = req.body.data.options[0].options[0].value;
       const threadTitle = req.body.data.options[0].options[1].value;
@@ -653,43 +643,6 @@ export async function handleSlashCommands(req, res, client) {
       }
     }
 
-    // Subcommand: reset
-    if (subcommand === 'reset') {
-      contentState.active = false;
-      contentState.messageId = null;
-      contentState.channelId = null;
-      contentState.threadId = null;
-      contentState.contentType = 'ff';
-      contentState.title = '';
-      contentState.zone = 'Brecilien';
-      contentState.tier = 7;
-      contentState.time = '';
-      contentState.demassNotice = '';
-      contentState.targetCount = 10;
-      contentState.roles = {
-        tank: null,
-        heal: null,
-        shadowcaller: null,
-        blazing: null,
-        badon: null
-      };
-      contentState.categories = {
-        tank: [],
-        heal: [],
-        dps: [],
-        support: [],
-        dtank: []
-      };
-      contentState.fill = [];
-
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: '✅ Content callout has been reset! You can now create a new one with `/content create`.',
-          flags: 64
-        },
-      });
-    }
   }
 
   // "/regear" command - Manage regear threads (unified CTA/FF)

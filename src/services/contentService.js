@@ -462,11 +462,19 @@ export async function autoAssignFillPlayers(client) {
     roleKeys = ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'];
   }
 
-  // Assign ALL fill players to available empty slots immediately
-  while (contentState.fill.length > 0) {
-    const emptySlot = roleKeys.find(key => contentState.roles[key] === null);
-    if (!emptySlot) break; // All slots full, remaining fill players wait
+  // Assign ALL fill players to available empty slots — random slot, random fill order
+  // Shuffle fill array so assignment order is unpredictable
+  for (let i = contentState.fill.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [contentState.fill[i], contentState.fill[j]] = [contentState.fill[j], contentState.fill[i]];
+  }
 
+  while (contentState.fill.length > 0) {
+    const emptySlots = roleKeys.filter(key => contentState.roles[key] === null);
+    if (emptySlots.length === 0) break; // All slots full, remaining fill players wait
+
+    // Pick a random empty slot
+    const emptySlot = emptySlots[Math.floor(Math.random() * emptySlots.length)];
     const fillPlayerId = contentState.fill.shift();
     contentState.roles[emptySlot] = fillPlayerId;
     console.log(`✅ Fill assigned: <@${fillPlayerId}> → ${emptySlot.toUpperCase()}`);

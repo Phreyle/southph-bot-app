@@ -189,11 +189,6 @@ const CONTENT_COMMAND = {
         },
       ],
     },
-    {
-      type: 1, // SUB_COMMAND
-      name: 'reset',
-      description: 'Reset the content callout (allows creating a new one)',
-    },
   ],
   type: 1,
   integration_types: [0, 1],
