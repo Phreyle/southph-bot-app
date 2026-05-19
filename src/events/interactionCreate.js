@@ -7,57 +7,30 @@ import {
 } from '../systems/ticket/ticket-system.js';
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { registerUser } from '../systems/albion/albion.js';
-import { EmbedBuilder } from 'discord.js';
-import { buildContentEmbed, buildContentComponents, autoAssignFillPlayers } from '../services/contentService.js';
-import { contentState } from '../config/contentState.js';
-
-// Valid roles per content type
-const CONTENT_VALID_ROLES = {
-  roa:        ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
-  roapvp:     ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'],
-  gcamps:     ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
-  tracking:   ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
-  avadungeon: ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
-  rck:        ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'],
-  rcb:        ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'],
-  cta:        ['tank', 'heal', 'dps', 'support', 'dtank'],
-  ff:         ['tank', 'heal', 'dps'],
-};
-const FIXED_SLOT_TYPES  = ['roa', 'roapvp', 'gcamps', 'tracking', 'avadungeon', 'rck', 'rcb'];
-const CATEGORY_TYPES    = ['cta', 'ff'];
-const FILL_TYPES        = ['roa', 'roapvp', 'gcamps', 'avadungeon', 'rck', 'rcb'];
+import { EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { buildContentEmbed, buildContentComponents, buildRoleSelector, autoAssignFillPlayers } from '../services/contentService.js';
+import { contentState, pendingCreations } from '../config/contentState.js';
 
 // Shared logic for all content button interactions
 async function processContentButton(componentId, userId, client) {
   if (!contentState.active) {
     return { message: '❌ No active content callout.', updated: false };
   }
-  const contentType = contentState.contentType;
-  const validRoles  = CONTENT_VALID_ROLES[contentType] || [];
   let message = '';
   let updated = false;
 
   if (componentId === 'content_cancel') {
     let found = false;
-    if (FIXED_SLOT_TYPES.includes(contentType)) {
-      for (const [k, uid] of Object.entries(contentState.roles)) {
-        if (uid === userId) { contentState.roles[k] = null; found = true; break; }
-      }
-      const idx = contentState.fill.indexOf(userId);
-      if (idx > -1) { contentState.fill.splice(idx, 1); found = true; }
-    } else if (CATEGORY_TYPES.includes(contentType)) {
-      for (const [, list] of Object.entries(contentState.categories)) {
-        const idx = list.indexOf(userId);
-        if (idx > -1) { list.splice(idx, 1); found = true; break; }
-      }
+    for (const [k, uid] of Object.entries(contentState.roles)) {
+      if (uid === userId) { contentState.roles[k] = null; found = true; break; }
     }
+    const idx = contentState.fill.indexOf(userId);
+    if (idx > -1) { contentState.fill.splice(idx, 1); found = true; }
     message = found ? '✅ You have been removed from the role call.' : 'ℹ️ You are not currently signed up.';
     updated = found;
 
   } else if (componentId === 'content_fill') {
-    if (!FILL_TYPES.includes(contentType)) {
-      message = '❌ Fill is only available for fixed-slot content types (not Tracking, CTA, or FF).';
-    } else if (contentState.fill.includes(userId)) {
+    if (contentState.fill.includes(userId)) {
       message = 'ℹ️ You are already in the fill list.';
     } else {
       for (const [k, uid] of Object.entries(contentState.roles)) {
@@ -72,37 +45,22 @@ async function processContentButton(componentId, userId, client) {
   } else {
     // content_role_[roleKey]
     const roleKey = componentId.replace('content_role_', '');
-    if (!validRoles.includes(roleKey)) {
-      message = `❌ This role is not valid for **${contentType.toUpperCase()}** content.`;
-    } else if (CATEGORY_TYPES.includes(contentType)) {
-      if (contentState.categories[roleKey].includes(userId)) {
-        message = `ℹ️ You are already signed up as **${roleKey.toUpperCase()}**.`;
-      } else {
-        for (const [, list] of Object.entries(contentState.categories)) {
-          const idx = list.indexOf(userId);
-          if (idx > -1) list.splice(idx, 1);
-        }
-        contentState.categories[roleKey].push(userId);
-        message = `✅ You've signed up as **${roleKey.toUpperCase()}**!`;
-        updated = true;
-      }
+    if (!contentState.activeRoles.includes(roleKey)) {
+      message = `❌ This role is not part of the current content.`;
+    } else if (contentState.roles[roleKey] && contentState.roles[roleKey] !== userId) {
+      message = `❌ The **${roleKey.toUpperCase()}** slot is already taken by <@${contentState.roles[roleKey]}>!`;
+    } else if (contentState.roles[roleKey] === userId) {
+      message = `ℹ️ You are already signed up as **${roleKey.toUpperCase()}**.`;
     } else {
-      // Fixed slot
-      if (contentState.roles[roleKey] && contentState.roles[roleKey] !== userId) {
-        message = `❌ The **${roleKey.toUpperCase()}** slot is already taken by <@${contentState.roles[roleKey]}>!`;
-      } else if (contentState.roles[roleKey] === userId) {
-        message = `ℹ️ You are already signed up as **${roleKey.toUpperCase()}**.`;
-      } else {
-        for (const [k, uid] of Object.entries(contentState.roles)) {
-          if (uid === userId) contentState.roles[k] = null;
-        }
-        const fillIdx = contentState.fill.indexOf(userId);
-        if (fillIdx > -1) contentState.fill.splice(fillIdx, 1);
-        contentState.roles[roleKey] = userId;
-        await autoAssignFillPlayers(client);
-        message = `✅ You've signed up as **${roleKey.toUpperCase()}**!`;
-        updated = true;
+      for (const [k, uid] of Object.entries(contentState.roles)) {
+        if (uid === userId) contentState.roles[k] = null;
       }
+      const fillIdx = contentState.fill.indexOf(userId);
+      if (fillIdx > -1) contentState.fill.splice(fillIdx, 1);
+      contentState.roles[roleKey] = userId;
+      await autoAssignFillPlayers(client);
+      message = `✅ You've signed up as **${roleKey.toUpperCase()}**!`;
+      updated = true;
     }
   }
 
@@ -111,8 +69,126 @@ async function processContentButton(componentId, userId, client) {
 
 export async function handleInteractionCreate(interaction) {
   try {
+    // Handle string select menus (content creation flow)
+    if (interaction.isStringSelectMenu()) {
+      const customId = interaction.customId;
+
+      if (customId === 'content_size_select') {
+        const partySize = parseInt(interaction.values[0]);
+        const userId = interaction.user.id;
+        pendingCreations.set(userId, { partySize });
+        await interaction.update({
+          content: `**Step 2/3** — Pick exactly **${partySize}** roles for your party:`,
+          components: buildRoleSelector(partySize)
+        });
+        return;
+      }
+
+      if (customId === 'content_role_select') {
+        const roles = interaction.values;
+        const userId = interaction.user.id;
+        const pending = pendingCreations.get(userId) || {};
+        pendingCreations.set(userId, { ...pending, roles });
+
+        const modal = new ModalBuilder()
+          .setCustomId('content_create_modal')
+          .setTitle('Content Details')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('modal_title')
+                .setLabel('Content Title')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g. ROA Sunday Run')
+                .setRequired(true)
+                .setMaxLength(100)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('modal_time')
+                .setLabel('Time (e.g. 20:00 UTC)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('20:00 UTC')
+                .setRequired(true)
+                .setMaxLength(50)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('modal_demass')
+                .setLabel('Demass Notice (optional)')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Leave blank if no demass notice')
+                .setRequired(false)
+                .setMaxLength(500)
+            )
+          );
+        await interaction.showModal(modal);
+        return;
+      }
+      return;
+    }
+
+    // Handle modal submits (content creation step 3)
+    if (interaction.isModalSubmit()) {
+      const customId = interaction.customId;
+      if (customId === 'content_create_modal') {
+        const userId = interaction.user.id;
+        const channelId = interaction.channelId;
+        const title = interaction.fields.getTextInputValue('modal_title');
+        const time = interaction.fields.getTextInputValue('modal_time');
+        const demassNotice = interaction.fields.getTextInputValue('modal_demass') || '';
+
+        const pending = pendingCreations.get(userId);
+        if (!pending?.roles?.length) {
+          await interaction.reply({ content: '❌ Session expired. Please run `/content create` again.', ephemeral: true });
+          return;
+        }
+
+        contentState.active = true;
+        contentState.title = title;
+        contentState.time = time;
+        contentState.demassNotice = demassNotice;
+        contentState.activeRoles = pending.roles;
+        contentState.roles = Object.fromEntries(pending.roles.map(k => [k, null]));
+        contentState.fill = [];
+        pendingCreations.delete(userId);
+
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const embed = buildContentEmbed();
+          const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
+            method: 'POST',
+            body: { name: title, type: 11, auto_archive_duration: 1440 }
+          });
+          const threadData = await threadResponse.json();
+          const threadId = threadData.id;
+
+          const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
+            method: 'POST',
+            body: {
+              content: '<@&1344897722196430879>',
+              embeds: [embed.toJSON()],
+              components: buildContentComponents().map(r => r.toJSON())
+            }
+          });
+          const messageData = await messageResponse.json();
+
+          contentState.messageId = messageData.id;
+          contentState.channelId = threadId;
+          contentState.threadId = threadId;
+
+          await interaction.editReply({ content: `✅ Content thread created: **${title}**` });
+        } catch (err) {
+          console.error('❌ Error creating content thread (gateway modal):', err);
+          contentState.active = false;
+          await interaction.editReply({ content: '❌ Failed to create content thread. Please try again.' });
+        }
+        return;
+      }
+      return;
+    }
+
     // Handle button interactions
-    if (!interaction.isButton()) return;
 
     const customId = interaction.customId;
 
@@ -249,6 +325,40 @@ export async function handleInteractionCreate(interaction) {
 // Button interactions handler for Express endpoint
 export async function handleButtonInteractions(req, res, client) {
   const componentId = req.body.data.custom_id;
+
+  // Content size select menu handler
+  if (componentId === 'content_size_select') {
+    const partySize = parseInt(req.body.data.values[0]);
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+    pendingCreations.set(userId, { partySize });
+    return res.send({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: {
+        content: `**Step 2/3** — Pick exactly **${partySize}** roles for your party:`,
+        components: buildRoleSelector(partySize).map(r => r.toJSON())
+      }
+    });
+  }
+
+  // Content role select menu handler — opens modal
+  if (componentId === 'content_role_select') {
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+    const roles = req.body.data.values;
+    const pending = pendingCreations.get(userId) || {};
+    pendingCreations.set(userId, { ...pending, roles });
+    return res.send({
+      type: 9, // MODAL
+      data: {
+        custom_id: 'content_create_modal',
+        title: 'Content Details',
+        components: [
+          { type: 1, components: [{ type: 4, custom_id: 'modal_title', label: 'Content Title', style: 1, placeholder: 'e.g. ROA Sunday Run', required: true, max_length: 100 }] },
+          { type: 1, components: [{ type: 4, custom_id: 'modal_time', label: 'Time (e.g. 20:00 UTC)', style: 1, placeholder: '20:00 UTC', required: true, max_length: 50 }] },
+          { type: 1, components: [{ type: 4, custom_id: 'modal_demass', label: 'Demass Notice (optional)', style: 2, placeholder: 'Leave blank if no demass notice', required: false, max_length: 500 }] }
+        ]
+      }
+    });
+  }
 
   // Content role-call button handlers
   if (componentId.startsWith('content_role_') || componentId === 'content_fill' || componentId === 'content_cancel') {
@@ -563,4 +673,79 @@ export async function handleButtonInteractions(req, res, client) {
 
   console.error(`❌ Unknown component ID: ${componentId}`);
   return res.status(400).json({ error: 'unknown component' });
+}
+
+// Modal submit handler for Express endpoint (interaction type 5)
+export async function handleModalSubmit(req, res, client) {
+  const customId = req.body.data.custom_id;
+  if (customId !== 'content_create_modal') {
+    return res.status(400).json({ error: 'unknown modal' });
+  }
+
+  const userId = req.body.member?.user?.id || req.body.user?.id;
+  const channelId = req.body.channel_id;
+  const modalComponents = req.body.data.components;
+
+  const title = modalComponents[0].components[0].value;
+  const time = modalComponents[1].components[0].value;
+  const demassNotice = modalComponents[2]?.components[0]?.value || '';
+
+  const pending = pendingCreations.get(userId);
+  if (!pending?.roles?.length) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { content: '❌ Session expired. Please run `/content create` again.', flags: 64 }
+    });
+  }
+
+  contentState.active = true;
+  contentState.title = title;
+  contentState.time = time;
+  contentState.demassNotice = demassNotice;
+  contentState.activeRoles = pending.roles;
+  contentState.roles = Object.fromEntries(pending.roles.map(k => [k, null]));
+  contentState.fill = [];
+  pendingCreations.delete(userId);
+
+  // Acknowledge the modal
+  res.send({
+    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+    data: { flags: 64 }
+  });
+
+  try {
+    const embed = buildContentEmbed();
+    const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
+      method: 'POST',
+      body: { name: title, type: 11, auto_archive_duration: 1440 }
+    });
+    const threadData = await threadResponse.json();
+    const threadId = threadData.id;
+
+    const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
+      method: 'POST',
+      body: {
+        content: '<@&1344897722196430879>',
+        embeds: [embed.toJSON()],
+        components: buildContentComponents().map(r => r.toJSON())
+      }
+    });
+    const messageData = await messageResponse.json();
+
+    contentState.messageId = messageData.id;
+    contentState.channelId = threadId;
+    contentState.threadId = threadId;
+
+    await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+      method: 'PATCH',
+      body: { content: `✅ Content thread created: **${title}**`, flags: 64 }
+    });
+  } catch (err) {
+    console.error('❌ Error creating content thread from modal:', err);
+    contentState.active = false;
+    await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+      method: 'PATCH',
+      body: { content: '❌ Failed to create content thread. Please try again.', flags: 64 }
+    });
+  }
 }

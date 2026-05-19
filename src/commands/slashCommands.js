@@ -6,8 +6,8 @@ import { deposit, withdraw, getBalance, getActiveUsers, clearUser, clearAll, CUR
 import { loadPermissions, savePermissions } from '../database/guildData.js';
 import { hasPermissionSlash } from '../utils/permissions.js';
 import { buildHelpEmbed, buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
-import { contentState } from '../config/contentState.js';
-import { buildContentEmbed, buildContentComponents, autoAssignFillPlayers } from '../services/contentService.js';
+import { contentState, pendingCreations } from '../config/contentState.js';
+import { buildContentEmbed, buildContentComponents, buildSizeSelector, autoAssignFillPlayers } from '../services/contentService.js';
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
@@ -201,170 +201,19 @@ export async function handleSlashCommands(req, res, client) {
       }
     }
 
-    // Subcommand: create (always allowed — overwrites any existing callout)
+    // Subcommand: create — step 1: show party size dropdown (ephemeral)
     if (subcommand === 'create') {
-      console.log('   Creating content thread...');
+      const userId = req.body.member?.user?.id || req.body.user?.id;
+      pendingCreations.set(userId, { partySize: null });
 
-      const contentType = req.body.data.options[0].options[0].value;
-      const threadTitle = req.body.data.options[0].options[1].value;
-      const zone = req.body.data.options[0].options[2].value;
-      const tier = req.body.data.options[0].options[3].value;
-      const time = req.body.data.options[0].options[4].value;
-      const demassNotice = req.body.data.options[0].options[5]?.value || '';
-      const targetCount = req.body.data.options[0].options[6]?.value || 10;
-      const channelId = req.body.channel_id;
-
-      // Reset contentState
-      contentState.active = true;
-      contentState.contentType = contentType;
-      contentState.title = threadTitle;
-      contentState.zone = zone;
-      contentState.tier = tier;
-      contentState.time = time;
-      contentState.demassNotice = demassNotice;
-      contentState.targetCount = targetCount;
-
-      // Reset roles (for ROA/GCAMPS/Tracking/Avadungeon/ROAPVP/RCK/RCB)
-      contentState.roles = {
-        tank: null,
-        heal: null,
-        mp: null,
-        mp2: null,
-        shadowcaller: null,
-        blazing: null,
-        flex: null,
-        badon: null,
-        dpair: null,
-        hpcut: null,
-        flexdps: null,
-        // Avadungeon roles
-        offtank: null,
-        stun: null,
-        mainhealer: null,
-        partyhealer: null,
-        dps1: null,
-        dps2: null,
-        dps3: null,
-        dps4: null,
-        // ROA PVE/P roles
-        blaze: null,
-        sc: null,
-        perma: null,
-        lc: null,
-        // RCK roles
-        longbow: null,
-        realmbreaker: null,
-        kingmaker: null,
-        heron: null,
-        bloodletter: null,
-        // RCB roles
-        realmcarving: null,
-        brawl1: null,
-        brawl2: null,
-        brawl3: null
-      };
-
-      // Reset categories (for CTA/FF)
-      contentState.categories = {
-        tank: [],
-        heal: [],
-        dps: [],
-        support: [],
-        dtank: []
-      };
-
-      contentState.fill = [];
-
-      const embed = buildContentEmbed();
-
-      // Defer the response to give us time to create the thread
-      console.log('   ⏳ Deferring response...');
-      res.send({
-        type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          flags: 64
+          content: '**Step 1/3** — How many party slots?',
+          flags: 64,
+          components: buildSizeSelector().map(r => r.toJSON())
         }
       });
-
-      try {
-        // Create a thread in the channel
-        console.log('   📝 Creating thread...');
-        const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
-          method: 'POST',
-          body: {
-            name: threadTitle,
-            type: 11,
-            auto_archive_duration: 1440
-          },
-        });
-        const threadData = await threadResponse.json();
-        const threadId = threadData.id;
-        console.log(`   ✅ Thread created: ${threadId}`);
-
-        // Post the content message in the thread
-        console.log('   📤 Posting message in thread...');
-        const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
-          method: 'POST',
-          body: {
-            content: "<@&1344897722196430879>",
-            embeds: [embed.toJSON()],
-            components: buildContentComponents().map(r => r.toJSON())
-          },
-        });
-        const messageData = await messageResponse.json();
-
-        // Store the message and channel info
-        contentState.messageId = messageData.id;
-        contentState.channelId = threadId;
-        contentState.threadId = threadId;
-        console.log('   ✅ Content state saved');
-
-        // Follow up with success message
-        console.log('   📨 Sending follow-up message...');
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: `✅ ${contentType.toUpperCase()} content thread created: **${threadTitle}**`,
-            flags: 64
-          },
-        });
-        console.log('   ✅ /content create completed successfully');
-
-      } catch (err) {
-        console.error('   ❌ Error creating thread:', err);
-        contentState.active = false;
-
-        // Follow up with error message with more details
-        let errorMsg = '❌ Failed to create content thread.';
-        
-        // Try to parse the Discord API error
-        try {
-          const errorData = JSON.parse(err.message);
-          if (errorData.message) {
-            if (errorData.message.includes('Missing Permissions') || errorData.code === 50013) {
-              errorMsg += '\n**Reason:** Bot lacks permissions in this channel.';
-            } else if (errorData.message.includes('Invalid Form Body') || errorData.code === 50035) {
-              errorMsg += '\n**Reason:** Threads cannot be created in this channel type. Try using a regular text channel.';
-            } else if (errorData.code === 160004) {
-              errorMsg += '\n**Reason:** This channel has reached the maximum number of active threads.';
-            } else {
-              errorMsg += `\n**Reason:** ${errorData.message}`;
-            }
-          }
-        } catch (parseErr) {
-          // If we can't parse it, use the original error message
-          errorMsg += `\n**Error:** ${err.message}`;
-        }
-        
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-          method: 'PATCH',
-          body: {
-            content: errorMsg,
-            flags: 64
-          },
-        });
-      }
-      return;
     }
 
     // Subcommand: adduser
@@ -382,103 +231,36 @@ export async function handleSlashCommands(req, res, client) {
       const targetUserId = req.body.data.options[0].options[0].value;
       const roleOption = req.body.data.options[0].options[1].value;
 
-      // Validate role for content type
-      const validRoles = {
-        'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
-        'roapvp': ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'],
-        'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
-        'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
-        'avadungeon': ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
-        'rck': ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'],
-        'rcb': ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'],
-        'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
-        'ff': ['tank', 'heal', 'dps']
-      };
-
-      if (!validRoles[contentState.contentType]?.includes(roleOption)) {
-        const contentTypeName = contentState.contentType.toUpperCase();
+      // Validate role against current active roles
+      if (!contentState.activeRoles.includes(roleOption)) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `❌ The role **${roleOption}** is not valid for **${contentTypeName}** content!\n\nValid roles for ${contentTypeName}: ${(validRoles[contentState.contentType] || []).map(r => `\`${r}\``).join(', ')}`,
+            content: `❌ The role **${roleOption}** is not part of this content callout!\n\nActive roles: ${contentState.activeRoles.map(r => `\`${r}\``).join(', ')}`,
             flags: 64
           },
         });
       }
 
-      // Handle category-based content types (CTA, FF)
-      if (contentState.contentType === 'cta' || contentState.contentType === 'ff') {
-        // Check if user is already in this category
-        if (contentState.categories[roleOption].includes(targetUserId)) {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `❌ <@${targetUserId}> is already in **${roleOption.toUpperCase()}** category!`,
-              flags: 64
-            },
-          });
-        }
-
-        // Add user to category
-        contentState.categories[roleOption].push(targetUserId);
-
-        const embed = buildContentEmbed();
-
-        // Update the original message
-        try {
-          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
-            method: 'PATCH',
-            body: {
-              embeds: [embed.toJSON()]
-            },
-          });
-
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `✅ <@${targetUserId}> added to **${roleOption.toUpperCase()}** category`,
-              flags: 64
-            },
-          });
-        } catch (err) {
-          console.error('Error updating message:', err);
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: '❌ Failed to update the content message.',
-              flags: 64
-            },
-          });
-        }
-      }
-
-      // Handle fixed-slot content types (ROA, GCAMPS, Tracking, Avadungeon)
       if (contentState.roles[roleOption]) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `❌ The ${roleOption.toUpperCase()} slot is already filled!`,
+            content: `❌ The **${roleOption.toUpperCase()}** slot is already filled!`,
             flags: 64
           },
         });
       }
 
       contentState.roles[roleOption] = targetUserId;
-
-      // Check if we need to auto-assign fill players after adding user
       await autoAssignFillPlayers(client);
 
       const embed = buildContentEmbed();
-
-      // Update the original message
       try {
         await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
           method: 'PATCH',
-          body: {
-            embeds: [embed.toJSON()]
-          },
+          body: { embeds: [embed.toJSON()] },
         });
-
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -490,10 +272,7 @@ export async function handleSlashCommands(req, res, client) {
         console.error('Error updating message:', err);
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: '❌ Failed to update the content message.',
-            flags: 64
-          },
+          data: { content: '❌ Failed to update the content message.', flags: 64 },
         });
       }
     }
@@ -511,97 +290,22 @@ export async function handleSlashCommands(req, res, client) {
       }
 
       const roleOption = req.body.data.options[0].options[0].value;
-      // For category-based content, we need the user parameter
-      const userOption = req.body.data.options[0].options.find(opt => opt.name === 'user')?.value;
 
-      // Validate role for content type
-      const validRoles = {
-        'roa': ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
-        'roapvp': ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'],
-        'gcamps': ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
-        'tracking': ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
-        'avadungeon': ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
-        'rck': ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'],
-        'rcb': ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'],
-        'cta': ['tank', 'heal', 'dps', 'support', 'dtank'],
-        'ff': ['tank', 'heal', 'dps']
-      };
-
-      if (!validRoles[contentState.contentType].includes(roleOption)) {
-        const contentTypeName = contentState.contentType.toUpperCase();
+      if (!contentState.activeRoles.includes(roleOption)) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `❌ The role **${roleOption}** is not valid for **${contentTypeName}** content!\n\nValid roles for ${contentTypeName}: ${validRoles[contentState.contentType].map(r => `\`${r}\``).join(', ')}`,
+            content: `❌ The role **${roleOption}** is not part of this content callout!`,
             flags: 64
           },
         });
       }
 
-      // Handle category-based content types (CTA, FF)
-      if (contentState.contentType === 'cta' || contentState.contentType === 'ff') {
-        // User parameter is required for category-based content
-        if (!userOption) {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `❌ For **${contentState.contentType.toUpperCase()}** content, you must specify which user to remove using the \`user\` parameter!`,
-              flags: 64
-            },
-          });
-        }
-
-        // Check if user exists in this category
-        const userIndex = contentState.categories[roleOption].indexOf(userOption);
-        if (userIndex === -1) {
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `❌ <@${userOption}> is not in the **${roleOption.toUpperCase()}** category!`,
-              flags: 64
-            },
-          });
-        }
-
-        // Remove user from category
-        contentState.categories[roleOption].splice(userIndex, 1);
-
-        const embed = buildContentEmbed();
-
-        // Update the original message
-        try {
-          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
-            method: 'PATCH',
-            body: {
-              embeds: [embed.toJSON()]
-            },
-          });
-
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: `✅ Removed <@${userOption}> from **${roleOption.toUpperCase()}** category`,
-              flags: 64
-            },
-          });
-        } catch (err) {
-          console.error('Error updating message:', err);
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: '❌ Failed to update the content message.',
-              flags: 64
-            },
-          });
-        }
-      }
-
-      // Handle fixed-slot content types (ROA, GCAMPS, Tracking, Avadungeon)
       if (!contentState.roles[roleOption]) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `❌ The ${roleOption.toUpperCase()} slot is already empty!`,
+            content: `❌ The **${roleOption.toUpperCase()}** slot is already empty!`,
             flags: 64
           },
         });
@@ -609,21 +313,14 @@ export async function handleSlashCommands(req, res, client) {
 
       const removedUserId = contentState.roles[roleOption];
       contentState.roles[roleOption] = null;
-
-      // Check if we need to auto-assign fill players after removing user
       await autoAssignFillPlayers(client);
 
       const embed = buildContentEmbed();
-
-      // Update the original message
       try {
         await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
           method: 'PATCH',
-          body: {
-            embeds: [embed.toJSON()]
-          },
+          body: { embeds: [embed.toJSON()] },
         });
-
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -635,10 +332,7 @@ export async function handleSlashCommands(req, res, client) {
         console.error('Error updating message:', err);
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: '❌ Failed to update the content message.',
-            flags: 64
-          },
+          data: { content: '❌ Failed to update the content message.', flags: 64 },
         });
       }
     }

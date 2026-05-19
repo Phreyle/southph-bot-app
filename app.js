@@ -5,7 +5,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import { InteractionType, InteractionResponseType, verifyKeyMiddleware } from 'discord-interactions';
 import { DATA_DIR, PORT } from './src/config/constants.js';
 import { handleMessageCreate } from './src/events/messageCreate.js';
-import { handleInteractionCreate, handleButtonInteractions } from './src/events/interactionCreate.js';
+import { handleInteractionCreate, handleButtonInteractions, handleModalSubmit } from './src/events/interactionCreate.js';
 import { handleSlashCommands } from './src/commands/slashCommands.js';
 
 // Ensure data directory exists
@@ -89,6 +89,13 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
      */
     if (type === InteractionType.MESSAGE_COMPONENT) {
       return await handleButtonInteractions(req, res, client);
+    }
+
+    /**
+     * Handle modal submit interactions
+     */
+    if (type === InteractionType.MODAL_SUBMIT) {
+      return await handleModalSubmit(req, res, client);
     }
 
     console.error('❌ Unknown interaction type:', type);
