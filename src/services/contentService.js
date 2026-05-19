@@ -1,4 +1,4 @@
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { CUSTOM_EMOJIS } from '../config/constants.js';
 import { contentState } from '../config/contentState.js';
 
@@ -371,6 +371,75 @@ export const buildContentEmbed = () => {
         fillSection
       );
   }
+};
+
+// Build Discord button components for the active content type
+export const buildContentComponents = () => {
+  const contentType = contentState.contentType;
+
+  const btn = (customId, label, style = ButtonStyle.Primary) =>
+    new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style);
+
+  const cancelBtn = btn('content_cancel', '❌ Cancel Role', ButtonStyle.Danger);
+  const fillBtn   = btn('content_fill',   '🔄 Fill',        ButtonStyle.Secondary);
+
+  const row = (...btns) => new ActionRowBuilder().addComponents(...btns);
+
+  if (contentType === 'roa') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_mp', 'MP'), btn('content_role_mp2', 'MP2'), btn('content_role_shadowcaller', 'SC')),
+      row(btn('content_role_blazing', 'BLAZING'), btn('content_role_flex', 'FLEX'), fillBtn, cancelBtn)
+    ];
+  }
+  if (contentType === 'roapvp') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_blaze', 'BLAZE'), btn('content_role_sc', 'SC'), btn('content_role_perma', 'PERMA')),
+      row(btn('content_role_lc', 'LC'), btn('content_role_mp', 'MP'), fillBtn, cancelBtn)
+    ];
+  }
+  if (contentType === 'gcamps') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_shadowcaller', 'SC'), btn('content_role_blazing', 'BLAZING'), btn('content_role_badon', 'BADON')),
+      row(fillBtn, cancelBtn)
+    ];
+  }
+  if (contentType === 'tracking') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_dpair', 'DPAIR'), btn('content_role_hpcut', 'HP CUT'), btn('content_role_flexdps', 'FLEX DPS')),
+      row(cancelBtn)
+    ];
+  }
+  if (contentType === 'avadungeon') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_offtank', 'OFF-TANK'), btn('content_role_stun', 'STUN'), btn('content_role_mainhealer', 'MAIN HEAL'), btn('content_role_partyhealer', 'PARTY HEAL')),
+      row(btn('content_role_shadowcaller', 'SC'), btn('content_role_dps1', 'DPS1'), btn('content_role_dps2', 'DPS2'), btn('content_role_dps3', 'DPS3'), btn('content_role_dps4', 'DPS4')),
+      row(fillBtn, cancelBtn)
+    ];
+  }
+  if (contentType === 'rck') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_longbow', 'LONGBOW'), btn('content_role_realmbreaker', 'REALMBREAKER'), btn('content_role_kingmaker', 'KINGMAKER')),
+      row(btn('content_role_heron', 'HERON'), btn('content_role_bloodletter', 'BLOODLETTER'), fillBtn, cancelBtn)
+    ];
+  }
+  if (contentType === 'rcb') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_realmcarving', 'REALMCARVING'), btn('content_role_longbow', 'LONGBOW'), btn('content_role_brawl1', 'BRAWL1')),
+      row(btn('content_role_brawl2', 'BRAWL2'), btn('content_role_brawl3', 'BRAWL3'), fillBtn, cancelBtn)
+    ];
+  }
+  if (contentType === 'cta') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_dps', 'DPS'), btn('content_role_support', 'SUPPORT'), btn('content_role_dtank', 'DTANK')),
+      row(cancelBtn)
+    ];
+  }
+  if (contentType === 'ff') {
+    return [
+      row(btn('content_role_tank', 'TANK'), btn('content_role_heal', 'HEAL'), btn('content_role_dps', 'DPS'), cancelBtn)
+    ];
+  }
+  return [];
 };
 
 // Auto-assign fill players to empty slots immediately (no threshold)

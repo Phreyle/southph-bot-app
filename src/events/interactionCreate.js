@@ -8,6 +8,106 @@ import {
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { registerUser } from '../systems/albion/albion.js';
 import { EmbedBuilder } from 'discord.js';
+import { buildContentEmbed, buildContentComponents, autoAssignFillPlayers } from '../services/contentService.js';
+import { contentState } from '../config/contentState.js';
+
+// Valid roles per content type
+const CONTENT_VALID_ROLES = {
+  roa:        ['tank', 'heal', 'mp', 'mp2', 'shadowcaller', 'blazing', 'flex'],
+  roapvp:     ['tank', 'heal', 'blaze', 'sc', 'perma', 'lc', 'mp'],
+  gcamps:     ['tank', 'heal', 'shadowcaller', 'blazing', 'badon'],
+  tracking:   ['tank', 'heal', 'dpair', 'hpcut', 'flexdps'],
+  avadungeon: ['tank', 'offtank', 'stun', 'mainhealer', 'partyhealer', 'shadowcaller', 'dps1', 'dps2', 'dps3', 'dps4'],
+  rck:        ['tank', 'heal', 'longbow', 'realmbreaker', 'kingmaker', 'heron', 'bloodletter'],
+  rcb:        ['tank', 'heal', 'realmcarving', 'longbow', 'brawl1', 'brawl2', 'brawl3'],
+  cta:        ['tank', 'heal', 'dps', 'support', 'dtank'],
+  ff:         ['tank', 'heal', 'dps'],
+};
+const FIXED_SLOT_TYPES  = ['roa', 'roapvp', 'gcamps', 'tracking', 'avadungeon', 'rck', 'rcb'];
+const CATEGORY_TYPES    = ['cta', 'ff'];
+const FILL_TYPES        = ['roa', 'roapvp', 'gcamps', 'avadungeon', 'rck', 'rcb'];
+
+// Shared logic for all content button interactions
+async function processContentButton(componentId, userId, client) {
+  if (!contentState.active) {
+    return { message: '❌ No active content callout.', updated: false };
+  }
+  const contentType = contentState.contentType;
+  const validRoles  = CONTENT_VALID_ROLES[contentType] || [];
+  let message = '';
+  let updated = false;
+
+  if (componentId === 'content_cancel') {
+    let found = false;
+    if (FIXED_SLOT_TYPES.includes(contentType)) {
+      for (const [k, uid] of Object.entries(contentState.roles)) {
+        if (uid === userId) { contentState.roles[k] = null; found = true; break; }
+      }
+      const idx = contentState.fill.indexOf(userId);
+      if (idx > -1) { contentState.fill.splice(idx, 1); found = true; }
+    } else if (CATEGORY_TYPES.includes(contentType)) {
+      for (const [, list] of Object.entries(contentState.categories)) {
+        const idx = list.indexOf(userId);
+        if (idx > -1) { list.splice(idx, 1); found = true; break; }
+      }
+    }
+    message = found ? '✅ You have been removed from the role call.' : 'ℹ️ You are not currently signed up.';
+    updated = found;
+
+  } else if (componentId === 'content_fill') {
+    if (!FILL_TYPES.includes(contentType)) {
+      message = '❌ Fill is only available for fixed-slot content types (not Tracking, CTA, or FF).';
+    } else if (contentState.fill.includes(userId)) {
+      message = 'ℹ️ You are already in the fill list.';
+    } else {
+      for (const [k, uid] of Object.entries(contentState.roles)) {
+        if (uid === userId) contentState.roles[k] = null;
+      }
+      contentState.fill.push(userId);
+      await autoAssignFillPlayers(client);
+      message = '🔄 You have been added to the fill list!';
+      updated = true;
+    }
+
+  } else {
+    // content_role_[roleKey]
+    const roleKey = componentId.replace('content_role_', '');
+    if (!validRoles.includes(roleKey)) {
+      message = `❌ This role is not valid for **${contentType.toUpperCase()}** content.`;
+    } else if (CATEGORY_TYPES.includes(contentType)) {
+      if (contentState.categories[roleKey].includes(userId)) {
+        message = `ℹ️ You are already signed up as **${roleKey.toUpperCase()}**.`;
+      } else {
+        for (const [, list] of Object.entries(contentState.categories)) {
+          const idx = list.indexOf(userId);
+          if (idx > -1) list.splice(idx, 1);
+        }
+        contentState.categories[roleKey].push(userId);
+        message = `✅ You've signed up as **${roleKey.toUpperCase()}**!`;
+        updated = true;
+      }
+    } else {
+      // Fixed slot
+      if (contentState.roles[roleKey] && contentState.roles[roleKey] !== userId) {
+        message = `❌ The **${roleKey.toUpperCase()}** slot is already taken by <@${contentState.roles[roleKey]}>!`;
+      } else if (contentState.roles[roleKey] === userId) {
+        message = `ℹ️ You are already signed up as **${roleKey.toUpperCase()}**.`;
+      } else {
+        for (const [k, uid] of Object.entries(contentState.roles)) {
+          if (uid === userId) contentState.roles[k] = null;
+        }
+        const fillIdx = contentState.fill.indexOf(userId);
+        if (fillIdx > -1) contentState.fill.splice(fillIdx, 1);
+        contentState.roles[roleKey] = userId;
+        await autoAssignFillPlayers(client);
+        message = `✅ You've signed up as **${roleKey.toUpperCase()}**!`;
+        updated = true;
+      }
+    }
+  }
+
+  return { message, updated };
+}
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -94,6 +194,30 @@ export async function handleInteractionCreate(interaction) {
       return;
     }
 
+    // Content role-call button handlers
+    if (customId.startsWith('content_role_') || customId === 'content_fill' || customId === 'content_cancel') {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const { message, updated } = await processContentButton(customId, interaction.user.id, interaction.client);
+        if (updated) {
+          const embed = buildContentEmbed();
+          const components = buildContentComponents();
+          await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+            method: 'PATCH',
+            body: {
+              embeds: [embed.toJSON()],
+              components: components.map(r => r.toJSON())
+            }
+          });
+        }
+        await interaction.editReply({ content: message });
+      } catch (err) {
+        console.error('Error handling content button (gateway):', err);
+        await interaction.editReply({ content: '❌ An error occurred. Please try again.' });
+      }
+      return;
+    }
+
     // Ticket system buttons
     if (customId === 'apply_ticket') {
       await handleApplyTicket(interaction);
@@ -125,6 +249,43 @@ export async function handleInteractionCreate(interaction) {
 // Button interactions handler for Express endpoint
 export async function handleButtonInteractions(req, res, client) {
   const componentId = req.body.data.custom_id;
+
+  // Content role-call button handlers
+  if (componentId.startsWith('content_role_') || componentId === 'content_fill' || componentId === 'content_cancel') {
+    const userId = req.body.member?.user?.id || req.body.user?.id;
+
+    // Acknowledge immediately with a deferred ephemeral reply
+    res.send({
+      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { flags: 64 }
+    });
+
+    let replyContent = '';
+    try {
+      const { message, updated } = await processContentButton(componentId, userId, client);
+      replyContent = message;
+      if (updated) {
+        const embed = buildContentEmbed();
+        const components = buildContentComponents();
+        await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+          method: 'PATCH',
+          body: {
+            embeds: [embed.toJSON()],
+            components: components.map(r => r.toJSON())
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error handling content button (express):', err);
+      replyContent = '❌ An error occurred. Please try again.';
+    }
+
+    await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+      method: 'PATCH',
+      body: { content: replyContent, flags: 64 }
+    });
+    return;
+  }
 
   // Albion registration button handler
   if (componentId.startsWith('albion_register_')) {

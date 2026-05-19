@@ -7,7 +7,7 @@ import { loadPermissions, savePermissions } from '../database/guildData.js';
 import { hasPermissionSlash } from '../utils/permissions.js';
 import { buildHelpEmbed, buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { contentState } from '../config/contentState.js';
-import { buildContentEmbed, autoAssignFillPlayers } from '../services/contentService.js';
+import { buildContentEmbed, buildContentComponents, autoAssignFillPlayers } from '../services/contentService.js';
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
@@ -316,8 +316,9 @@ export async function handleSlashCommands(req, res, client) {
         const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
           method: 'POST',
           body: {
-            content:"<@&1344897722196430879>",
-            embeds: [embed.toJSON()]
+            content: "<@&1344897722196430879>",
+            embeds: [embed.toJSON()],
+            components: buildContentComponents().map(r => r.toJSON())
           },
         });
         const messageData = await messageResponse.json();
