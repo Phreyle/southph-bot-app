@@ -8,7 +8,7 @@ import {
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { registerUser } from '../systems/albion/albion.js';
 import { EmbedBuilder } from 'discord.js';
-import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildPresetNondpsMessage, buildPresetDpsMessage, buildCustomRoleModal, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, autoAssignFillPlayers, ROLE_MAP } from '../services/contentService.js';
+import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildPresetNondpsMessage, buildPresetDpsMessage, buildCustomRoleModal, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, buildDuplicatesStep, autoAssignFillPlayers, getRoleDisplayName, getBaseKey, ROLE_MAP } from '../services/contentService.js';
 import { contentState, pendingCreations } from '../config/contentState.js';
 
 // Shared logic for all content button interactions
@@ -140,6 +140,21 @@ export async function handleInteractionCreate(interaction) {
           return;
         }
       }
+
+      // Step 3c (Preset): dupe select — store selected bases for the Add button
+      if (customId === 'content_preset_dupe_select') {
+        const userId = interaction.user.id;
+        const pending = pendingCreations.get(userId);
+        if (!pending) {
+          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+          return;
+        }
+        pending.presetDupeSelected = interaction.values;
+        pendingCreations.set(userId, pending);
+        await interaction.deferUpdate();
+        return;
+      }
+
       return;
     }
 
@@ -302,7 +317,81 @@ export async function handleInteractionCreate(interaction) {
         return;
       }
       pending.assignedRoles = combined;
+      pending.presetDupeSelected = [];
       pendingCreations.set(userId, pending);
+      const { content: dupeContent, components: dupeComponents } = buildDuplicatesStep(pending);
+      await interaction.update({ content: dupeContent, components: dupeComponents });
+      return;
+    }
+
+    // Step 3c (Preset): add one extra copy of each selected role
+    if (customId === 'content_preset_add_dupe') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      const toAdd = pending.presetDupeSelected || [];
+      if (toAdd.length === 0) {
+        await interaction.reply({ content: 'ℹ️ No roles selected. Pick a role from the list first.', ephemeral: true });
+        return;
+      }
+      for (const base of toAdd) {
+        const existing = pending.assignedRoles.filter(k => getBaseKey(k) === base).length;
+        pending.assignedRoles.push(`${base}_${existing + 1}`);
+      }
+      pending.presetDupeSelected = [];
+      pendingCreations.set(userId, pending);
+      const { content, components } = buildDuplicatesStep(pending);
+      await interaction.update({ content, components });
+      return;
+    }
+
+    // Step 3c (Preset): done with duplicates — open details modal
+    if (customId === 'content_preset_finalize') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending?.assignedRoles?.length) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      await interaction.showModal(buildContentDetailsModal());
+      return;
+    }
+
+    // Step 3c (Preset): add one extra copy of each selected role
+    if (customId === 'content_preset_add_dupe') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      const toAdd = pending.presetDupeSelected || [];
+      if (toAdd.length === 0) {
+        await interaction.reply({ content: 'ℹ️ No roles selected. Pick a role from the list first.', ephemeral: true });
+        return;
+      }
+      for (const base of toAdd) {
+        const existing = pending.assignedRoles.filter(k => getBaseKey(k) === base).length;
+        pending.assignedRoles.push(`${base}_${existing + 1}`);
+      }
+      pending.presetDupeSelected = [];
+      pendingCreations.set(userId, pending);
+      const { content, components } = buildDuplicatesStep(pending);
+      await interaction.update({ content, components });
+      return;
+    }
+
+    // Step 3c (Preset): done with duplicates — open details modal
+    if (customId === 'content_preset_finalize') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending?.assignedRoles?.length) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
       await interaction.showModal(buildContentDetailsModal());
       return;
     }

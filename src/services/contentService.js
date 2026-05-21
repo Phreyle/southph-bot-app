@@ -256,6 +256,21 @@ export const DPS_GROUPS = {
   g4: MASTER_ROLES.filter(r => r.category === 'dps' && /^(curse_|staff_|shape_|arcane_)/.test(r.key)),
 };
 
+// ─── Role display helpers ──────────────────────────────────────────────────────
+
+// Strip duplicate suffix (_2, _3 …) to get the canonical ROLE_MAP key
+export const getBaseKey = (key) => key.replace(/_\d+$/, '');
+
+const CAT_LABEL = { tank: 'Tank', heal: 'Heal', support: 'Support', dps: 'DPS' };
+
+// Full display name: "Category - Label" (or custom name if present)
+export const getRoleDisplayName = (key, customNames = {}) => {
+  if (customNames[key]) return customNames[key];
+  const info = ROLE_MAP[getBaseKey(key)];
+  if (!info) return key.toUpperCase();
+  return `${CAT_LABEL[info.category] || info.category} - ${info.label}`;
+};
+
 // ─── Active-content embed & buttons ───────────────────────────────────────────
 
 // Build the content embed dynamically from activeRoles
@@ -265,7 +280,7 @@ export const buildContentEmbed = () => {
   const filled = activeRoles.filter(k => roles[k] != null).length;
 
   const roleLines = activeRoles.map((key, i) => {
-    const displayName = customRoleNames?.[key] || ROLE_MAP[key]?.label || key.toUpperCase();
+    const displayName = getRoleDisplayName(key, customRoleNames);
     const userId = roles[key];
     return `**${i + 1}. ${displayName}**   ${userId ? '➡️ <@' + userId + '>' : ''}`;
   });
@@ -297,9 +312,15 @@ export const buildContentComponents = () => {
   const row = (...btns) => new ActionRowBuilder().addComponents(...btns);
 
   const roleButtons = activeRoles.map(key => {
-    const shortLabel = customRoleNames?.[key]
-      ? customRoleNames[key].substring(0, 12)
-      : (ROLE_MAP[key]?.shortLabel || key.toUpperCase().substring(0, 12));
+    let shortLabel;
+    if (customRoleNames?.[key]) {
+      shortLabel = customRoleNames[key].substring(0, 12);
+    } else {
+      const baseInfo = ROLE_MAP[getBaseKey(key)];
+      const base = baseInfo?.shortLabel || getBaseKey(key).toUpperCase().substring(0, 10);
+      const dupMatch = key.match(/_(\d+)$/);
+      shortLabel = dupMatch ? `${base}${dupMatch[1]}`.substring(0, 12) : base.substring(0, 12);
+    }
     return btn(`content_role_${key}`, shortLabel);
   });
 
@@ -504,7 +525,7 @@ export const buildContentPreviewEmbed = (pending) => {
   const { assignedRoles = [], customRoleNames = {}, title, time, demassNotice } = pending;
 
   const roleLines = assignedRoles.map((key, i) => {
-    const displayName = customRoleNames[key] || ROLE_MAP[key]?.label || key.toUpperCase();
+    const displayName = getRoleDisplayName(key, customRoleNames);
     return `**${i + 1}. ${displayName}**`;
   });
 
@@ -518,6 +539,67 @@ export const buildContentPreviewEmbed = (pending) => {
       `**Party size:** ${assignedRoles.length}\n\n` +
       roleLines.join('\n'),
     );
+};
+
+// Step 3c (Preset): optional duplicate-slots step
+export const buildDuplicatesStep = (pending) => {
+  const { assignedRoles = [], customRoleNames = {} } = pending;
+
+  // Count how many copies of each base key are already assigned
+  const counts = {};
+  for (const key of assignedRoles) {
+    const base = getBaseKey(key);
+    counts[base] = (counts[base] || 0) + 1;
+  }
+
+  const uniqueBases = [...new Set(assignedRoles.map(k => getBaseKey(k)))];
+
+  const roleList = uniqueBases.map(base => {
+    const name = getRoleDisplayName(base, customRoleNames);
+    const c = counts[base];
+    return `• ${name}${c > 1 ? ` ×${c}` : ''}`;
+  }).join('\n');
+
+  const selectOptions = uniqueBases.map(base => ({
+    label: getRoleDisplayName(base, customRoleNames).substring(0, 100),
+    value: base,
+  }));
+
+  const components = [];
+  if (selectOptions.length > 0) {
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('content_preset_dupe_select')
+          .setPlaceholder('Select a role to add an extra copy')
+          .setMinValues(0)
+          .setMaxValues(Math.min(selectOptions.length, 25))
+          .addOptions(selectOptions)
+      )
+    );
+  }
+
+  components.push(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('content_preset_add_dupe')
+        .setLabel('➕ Add Extra Copy')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('content_preset_finalize')
+        .setLabel(`✅ Set Details (${assignedRoles.length} slots)`)
+        .setStyle(ButtonStyle.Success),
+    )
+  );
+
+  return {
+    content:
+      `**Step 3c — Optional: Duplicate Role Slots**\n` +
+      `Current slots (${assignedRoles.length}):\n${roleList}\n\n` +
+      `Select a role above and click **➕ Add Extra Copy** to add an extra slot for that role.\n` +
+      `Click **✅ Set Details** when your composition is ready.`,
+    components,
+  };
 };
 
 // Step 5: publish / edit-details buttons
@@ -558,10 +640,7 @@ export async function autoAssignFillPlayers(client) {
     try {
       const channel = await client.channels.fetch(contentState.threadId);
       if (channel) {
-        const displayName =
-          contentState.customRoleNames?.[emptySlot] ||
-          ROLE_MAP[emptySlot]?.label ||
-          emptySlot.toUpperCase();
+        const displayName = getRoleDisplayName(emptySlot, contentState.customRoleNames || {});
         await channel.send(`✅ <@${fillPlayerId}> has been automatically assigned to **${displayName}** from FILL!`);
       }
     } catch (err) {
