@@ -204,12 +204,19 @@ export async function handleSlashCommands(req, res, client) {
     // Subcommand: create — step 1: show party size dropdown (ephemeral)
     if (subcommand === 'create') {
       const userId = req.body.member?.user?.id || req.body.user?.id;
-      pendingCreations.set(userId, { partySize: null });
+      pendingCreations.set(userId, {
+        partySize: null,
+        method: null,
+        assignedRoles: [],
+        customRoleNames: {},
+        currentSlot: 0,
+        customBatchStart: 0,
+      });
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '**Step 1/3** — How many party slots?',
+          content: '**Step 1 of 4** — How many party slots?',
           flags: 64,
           components: buildSizeSelector().map(r => r.toJSON())
         }

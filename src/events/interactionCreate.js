@@ -7,8 +7,8 @@ import {
 } from '../systems/ticket/ticket-system.js';
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { registerUser } from '../systems/albion/albion.js';
-import { EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
-import { buildContentEmbed, buildContentComponents, buildRoleSelector, autoAssignFillPlayers } from '../services/contentService.js';
+import { EmbedBuilder } from 'discord.js';
+import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildSlotCategorySelector, buildCategoryRoleSelect, buildCustomBatchModal, buildCustomContinueButton, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, autoAssignFillPlayers, ROLE_MAP } from '../services/contentService.js';
 import { contentState, pendingCreations } from '../config/contentState.js';
 
 // Shared logic for all content button interactions
@@ -73,116 +73,131 @@ export async function handleInteractionCreate(interaction) {
     if (interaction.isStringSelectMenu()) {
       const customId = interaction.customId;
 
+      // Step 1 result: party size chosen → show method buttons
       if (customId === 'content_size_select') {
         const partySize = parseInt(interaction.values[0]);
         const userId = interaction.user.id;
-        pendingCreations.set(userId, { partySize });
+        pendingCreations.set(userId, {
+          partySize,
+          method: null,
+          assignedRoles: [],
+          customRoleNames: {},
+          currentSlot: 0,
+          customBatchStart: 0,
+        });
         await interaction.update({
-          content: `**Step 2/3** — Pick exactly **${partySize}** roles for your party:`,
-          components: buildRoleSelector(partySize)
+          content: `**Step 2 of 4** — Party size: **${partySize}**\nHow do you want to assign roles?`,
+          components: buildMethodSelector(),
         });
         return;
       }
 
-      if (customId === 'content_role_select') {
-        const roles = interaction.values;
+      // Step 3 (Preset): a category role was selected
+      if (customId.startsWith('content_cat_select_')) {
+        const category = customId.replace('content_cat_select_', '');
+        const roleKey = interaction.values[0];
         const userId = interaction.user.id;
-        const pending = pendingCreations.get(userId) || {};
-        pendingCreations.set(userId, { ...pending, roles });
+        const pending = pendingCreations.get(userId);
+        if (!pending) {
+          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+          return;
+        }
 
-        const modal = new ModalBuilder()
-          .setCustomId('content_create_modal')
-          .setTitle('Content Details')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('modal_title')
-                .setLabel('Content Title')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('e.g. ROA Sunday Run')
-                .setRequired(true)
-                .setMaxLength(100)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('modal_time')
-                .setLabel('Time (e.g. 20:00 UTC)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('20:00 UTC')
-                .setRequired(true)
-                .setMaxLength(50)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('modal_demass')
-                .setLabel('Demass Notice (optional)')
-                .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder('Leave blank if no demass notice')
-                .setRequired(false)
-                .setMaxLength(500)
-            )
+        // Assign this role to the current slot
+        pending.assignedRoles.push(roleKey);
+        pending.currentSlot++;
+        pendingCreations.set(userId, pending);
+
+        if (pending.currentSlot < pending.partySize) {
+          // More slots to fill
+          const { content, components } = buildSlotCategorySelector(
+            pending.currentSlot + 1,
+            pending.partySize,
+            pending.assignedRoles,
           );
-        await interaction.showModal(modal);
+          await interaction.update({ content, components });
+        } else {
+          // All slots filled → prompt for content details
+          await interaction.update({
+            content: `**Step 3 of 4 complete!**\nAll **${pending.partySize}** preset roles assigned.\n\nClick below to set the title, time, and demass notice:`,
+            components: buildContinueToDetailsButton(),
+          });
+        }
         return;
       }
       return;
     }
 
-    // Handle modal submits (content creation step 3)
+    // Handle modal submits (content creation flow)
     if (interaction.isModalSubmit()) {
       const customId = interaction.customId;
-      if (customId === 'content_create_modal') {
-        const userId = interaction.user.id;
-        const channelId = interaction.channelId;
-        const title = interaction.fields.getTextInputValue('modal_title');
-        const time = interaction.fields.getTextInputValue('modal_time');
-        const demassNotice = interaction.fields.getTextInputValue('modal_demass') || '';
 
+      // Custom role batch naming modal
+      if (customId === 'content_custom_modal') {
+        const userId = interaction.user.id;
         const pending = pendingCreations.get(userId);
-        if (!pending?.roles?.length) {
-          await interaction.reply({ content: '❌ Session expired. Please run `/content create` again.', ephemeral: true });
+        if (!pending) {
+          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
           return;
         }
 
-        contentState.active = true;
-        contentState.title = title;
-        contentState.time = time;
-        contentState.demassNotice = demassNotice;
-        contentState.activeRoles = pending.roles;
-        contentState.roles = Object.fromEntries(pending.roles.map(k => [k, null]));
-        contentState.fill = [];
-        pendingCreations.delete(userId);
+        // Read slot names from this batch
+        const batchStart = pending.customBatchStart || 0;
+        const batchEnd = Math.min(batchStart + 5, pending.partySize);
+        for (let i = batchStart; i < batchEnd; i++) {
+          const name = interaction.fields.getTextInputValue(`slot_name_${i}`).trim();
+          const key = `custom_${i}`;
+          pending.assignedRoles.push(key);
+          pending.customRoleNames[key] = name;
+          pending.currentSlot++;
+        }
+        pending.customBatchStart = batchEnd;
+        pendingCreations.set(userId, pending);
 
         await interaction.deferReply({ ephemeral: true });
-        try {
-          const embed = buildContentEmbed();
-          const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
-            method: 'POST',
-            body: { name: title, type: 11, auto_archive_duration: 1440 }
+
+        if (batchEnd < pending.partySize) {
+          // More batches to name
+          await interaction.editReply({
+            content: `✅ Slots ${batchStart + 1}–${batchEnd} named! Click to continue:`,
+            components: buildCustomContinueButton(batchEnd, pending.partySize),
           });
-          const threadData = await threadResponse.json();
-          const threadId = threadData.id;
-
-          const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
-            method: 'POST',
-            body: {
-              content: '<@&1344897722196430879>',
-              embeds: [embed.toJSON()],
-              components: buildContentComponents().map(r => r.toJSON())
-            }
+        } else {
+          // All slots named → ready for content details
+          await interaction.editReply({
+            content: `✅ All **${pending.partySize}** custom roles named!\n\nClick below to set the title, time, and demass notice:`,
+            components: buildContinueToDetailsButton(),
           });
-          const messageData = await messageResponse.json();
-
-          contentState.messageId = messageData.id;
-          contentState.channelId = threadId;
-          contentState.threadId = threadId;
-
-          await interaction.editReply({ content: `✅ Content thread created: **${title}**` });
-        } catch (err) {
-          console.error('❌ Error creating content thread (gateway modal):', err);
-          contentState.active = false;
-          await interaction.editReply({ content: '❌ Failed to create content thread. Please try again.' });
         }
+        return;
+      }
+
+      // Content details modal → show preview
+      if (customId === 'content_create_modal') {
+        const userId = interaction.user.id;
+        const title = interaction.fields.getTextInputValue('modal_title').trim();
+        const time = interaction.fields.getTextInputValue('modal_time').trim();
+        const demassNotice = interaction.fields.getTextInputValue('modal_demass')?.trim() || '';
+
+        const pending = pendingCreations.get(userId);
+        if (!pending?.assignedRoles?.length) {
+          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+          return;
+        }
+
+        // Store details in pending (not yet live)
+        pending.title = title;
+        pending.time = time;
+        pending.demassNotice = demassNotice;
+        pendingCreations.set(userId, pending);
+
+        await interaction.deferReply({ ephemeral: true });
+        const previewEmbed = buildContentPreviewEmbed(pending);
+        await interaction.editReply({
+          content: '**Step 4 of 4** — Review your content callout:',
+          embeds: [previewEmbed],
+          components: buildPreviewComponents(),
+        });
         return;
       }
       return;
@@ -192,7 +207,147 @@ export async function handleInteractionCreate(interaction) {
 
     const customId = interaction.customId;
 
-    // Albion registration button handler
+    // ── Content creation wizard buttons ──────────────────────────────────────
+
+    // Step 2 → Custom: open first batch modal
+    if (customId === 'content_method_custom') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      pending.method = 'custom';
+      pendingCreations.set(userId, pending);
+      await interaction.showModal(buildCustomBatchModal(0, pending.partySize));
+      return;
+    }
+
+    // Step 2 → Preset: show first slot category selector
+    if (customId === 'content_method_dropdown') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      pending.method = 'dropdown';
+      pendingCreations.set(userId, pending);
+      const { content, components } = buildSlotCategorySelector(1, pending.partySize, []);
+      await interaction.update({ content, components });
+      return;
+    }
+
+    // Step 3 (Preset): category chosen — show role dropdown for that category
+    if (['content_cat_tank', 'content_cat_heal', 'content_cat_support', 'content_cat_dps'].includes(customId)) {
+      const category = customId.replace('content_cat_', '');
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      const slotNum = (pending.currentSlot || 0) + 1;
+      await interaction.update({
+        content: `**Slot ${slotNum} of ${pending.partySize}** — Select a **${category.toUpperCase()}** role:`,
+        components: buildCategoryRoleSelect(category, slotNum, pending.partySize),
+      });
+      return;
+    }
+
+    // Step 3 (Preset): back to category buttons
+    if (customId === 'content_cat_back') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      const slotNum = (pending.currentSlot || 0) + 1;
+      const { content, components } = buildSlotCategorySelector(slotNum, pending.partySize, pending.assignedRoles);
+      await interaction.update({ content, components });
+      return;
+    }
+
+    // Step 3 (Custom): continue to next batch modal
+    if (customId === 'content_custom_continue') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      await interaction.showModal(buildCustomBatchModal(pending.customBatchStart, pending.partySize));
+      return;
+    }
+
+    // Step 3 → 4: open content details modal
+    if (customId === 'content_details_btn') {
+      await interaction.showModal(buildContentDetailsModal());
+      return;
+    }
+
+    // Step 5: publish — create thread and go live
+    if (customId === 'content_preview_publish') {
+      const userId = interaction.user.id;
+      const channelId = interaction.channelId;
+      const pending = pendingCreations.get(userId);
+      if (!pending?.assignedRoles?.length || !pending?.title) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        // Commit pending state to contentState
+        contentState.active = true;
+        contentState.title = pending.title;
+        contentState.time = pending.time;
+        contentState.demassNotice = pending.demassNotice;
+        contentState.activeRoles = pending.assignedRoles;
+        contentState.roles = Object.fromEntries(pending.assignedRoles.map(k => [k, null]));
+        contentState.customRoleNames = pending.customRoleNames || {};
+        contentState.fill = [];
+        pendingCreations.delete(userId);
+
+        const embed = buildContentEmbed();
+        const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
+          method: 'POST',
+          body: { name: pending.title, type: 11, auto_archive_duration: 1440 },
+        });
+        const threadData = await threadResponse.json();
+        const threadId = threadData.id;
+
+        const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
+          method: 'POST',
+          body: {
+            content: '<@&1344897722196430879>',
+            embeds: [embed.toJSON()],
+            components: buildContentComponents().map(r => r.toJSON()),
+          },
+        });
+        const messageData = await messageResponse.json();
+
+        contentState.messageId = messageData.id;
+        contentState.channelId = threadId;
+        contentState.threadId = threadId;
+
+        await interaction.editReply({ content: `✅ Content callout published: **${pending.title}**` });
+      } catch (err) {
+        console.error('❌ Error publishing content (gateway):', err);
+        contentState.active = false;
+        await interaction.editReply({ content: '❌ Failed to create content thread. Please try again.' });
+      }
+      return;
+    }
+
+    // Step 5: edit details — re-open modal
+    if (customId === 'content_preview_edit') {
+      await interaction.showModal(buildContentDetailsModal());
+      return;
+    }
+
+    // ── Albion registration button handler ────────────────────────────────────
     if (customId.startsWith('albion_register_')) {
       // Parse custom ID: albion_register_userId_region_type_playerId
       const parts = customId.split('_');
@@ -325,40 +480,204 @@ export async function handleInteractionCreate(interaction) {
 // Button interactions handler for Express endpoint
 export async function handleButtonInteractions(req, res, client) {
   const componentId = req.body.data.custom_id;
+  const userId = req.body.member?.user?.id || req.body.user?.id;
 
-  // Content size select menu handler
+  // ── Content creation wizard (Express path) ────────────────────────────────
+
+  // Step 1 result: party size chosen → show method buttons
   if (componentId === 'content_size_select') {
     const partySize = parseInt(req.body.data.values[0]);
-    const userId = req.body.member?.user?.id || req.body.user?.id;
-    pendingCreations.set(userId, { partySize });
+    pendingCreations.set(userId, {
+      partySize,
+      method: null,
+      assignedRoles: [],
+      customRoleNames: {},
+      currentSlot: 0,
+      customBatchStart: 0,
+    });
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
       data: {
-        content: `**Step 2/3** — Pick exactly **${partySize}** roles for your party:`,
-        components: buildRoleSelector(partySize).map(r => r.toJSON())
-      }
+        content: `**Step 2 of 4** — Party size: **${partySize}**\nHow do you want to assign roles?`,
+        components: buildMethodSelector().map(r => r.toJSON()),
+      },
     });
   }
 
-  // Content role select menu handler — opens modal
-  if (componentId === 'content_role_select') {
-    const userId = req.body.member?.user?.id || req.body.user?.id;
-    const roles = req.body.data.values;
-    const pending = pendingCreations.get(userId) || {};
-    pendingCreations.set(userId, { ...pending, roles });
+  // Step 2 → Custom: open first batch modal
+  if (componentId === 'content_method_custom') {
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    pending.method = 'custom';
+    pendingCreations.set(userId, pending);
+    return res.send({ type: 9, data: buildCustomBatchModal(0, pending.partySize).toJSON() });
+  }
+
+  // Step 2 → Preset: show first slot category selector
+  if (componentId === 'content_method_dropdown') {
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    pending.method = 'dropdown';
+    pendingCreations.set(userId, pending);
+    const { content, components } = buildSlotCategorySelector(1, pending.partySize, []);
     return res.send({
-      type: 9, // MODAL
-      data: {
-        custom_id: 'content_create_modal',
-        title: 'Content Details',
-        components: [
-          { type: 1, components: [{ type: 4, custom_id: 'modal_title', label: 'Content Title', style: 1, placeholder: 'e.g. ROA Sunday Run', required: true, max_length: 100 }] },
-          { type: 1, components: [{ type: 4, custom_id: 'modal_time', label: 'Time (e.g. 20:00 UTC)', style: 1, placeholder: '20:00 UTC', required: true, max_length: 50 }] },
-          { type: 1, components: [{ type: 4, custom_id: 'modal_demass', label: 'Demass Notice (optional)', style: 2, placeholder: 'Leave blank if no demass notice', required: false, max_length: 500 }] }
-        ]
-      }
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: { content, components: components.map(r => r.toJSON()) },
     });
   }
+
+  // Step 3 (Preset): category chosen — show role dropdown
+  if (['content_cat_tank', 'content_cat_heal', 'content_cat_support', 'content_cat_dps'].includes(componentId)) {
+    const category = componentId.replace('content_cat_', '');
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    const slotNum = (pending.currentSlot || 0) + 1;
+    return res.send({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: {
+        content: `**Slot ${slotNum} of ${pending.partySize}** — Select a **${category.toUpperCase()}** role:`,
+        components: buildCategoryRoleSelect(category, slotNum, pending.partySize).map(r => r.toJSON()),
+      },
+    });
+  }
+
+  // Step 3 (Preset): category role selected
+  if (componentId.startsWith('content_cat_select_')) {
+    const category = componentId.replace('content_cat_select_', '');
+    const roleKey = req.body.data.values[0];
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    pending.assignedRoles.push(roleKey);
+    pending.currentSlot++;
+    pendingCreations.set(userId, pending);
+
+    if (pending.currentSlot < pending.partySize) {
+      const { content, components } = buildSlotCategorySelector(
+        pending.currentSlot + 1,
+        pending.partySize,
+        pending.assignedRoles,
+      );
+      return res.send({
+        type: InteractionResponseType.UPDATE_MESSAGE,
+        data: { content, components: components.map(r => r.toJSON()) },
+      });
+    } else {
+      return res.send({
+        type: InteractionResponseType.UPDATE_MESSAGE,
+        data: {
+          content: `**Step 3 of 4 complete!**\nAll **${pending.partySize}** preset roles assigned.\n\nClick below to set the title, time, and demass notice:`,
+          components: buildContinueToDetailsButton().map(r => r.toJSON()),
+        },
+      });
+    }
+  }
+
+  // Step 3 (Preset): back to category buttons
+  if (componentId === 'content_cat_back') {
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    const slotNum = (pending.currentSlot || 0) + 1;
+    const { content, components } = buildSlotCategorySelector(slotNum, pending.partySize, pending.assignedRoles);
+    return res.send({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: { content, components: components.map(r => r.toJSON()) },
+    });
+  }
+
+  // Step 3 (Custom): continue to next batch modal
+  if (componentId === 'content_custom_continue') {
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    return res.send({ type: 9, data: buildCustomBatchModal(pending.customBatchStart, pending.partySize).toJSON() });
+  }
+
+  // Step 3 → 4: open content details modal
+  if (componentId === 'content_details_btn') {
+    return res.send({ type: 9, data: buildContentDetailsModal().toJSON() });
+  }
+
+  // Step 5: publish — create thread and go live
+  if (componentId === 'content_preview_publish') {
+    const channelId = req.body.channel_id;
+    const pending = pendingCreations.get(userId);
+    if (!pending?.assignedRoles?.length || !pending?.title) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 },
+      });
+    }
+
+    res.send({
+      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+      data: { flags: 64 },
+    });
+
+    try {
+      contentState.active = true;
+      contentState.title = pending.title;
+      contentState.time = pending.time;
+      contentState.demassNotice = pending.demassNotice;
+      contentState.activeRoles = pending.assignedRoles;
+      contentState.roles = Object.fromEntries(pending.assignedRoles.map(k => [k, null]));
+      contentState.customRoleNames = pending.customRoleNames || {};
+      contentState.fill = [];
+      pendingCreations.delete(userId);
+
+      const embed = buildContentEmbed();
+      const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
+        method: 'POST',
+        body: { name: pending.title, type: 11, auto_archive_duration: 1440 },
+      });
+      const threadData = await threadResponse.json();
+      const threadId = threadData.id;
+
+      const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
+        method: 'POST',
+        body: {
+          content: '<@&1344897722196430879>',
+          embeds: [embed.toJSON()],
+          components: buildContentComponents().map(r => r.toJSON()),
+        },
+      });
+      const messageData = await messageResponse.json();
+
+      contentState.messageId = messageData.id;
+      contentState.channelId = threadId;
+      contentState.threadId = threadId;
+
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: { content: `✅ Content callout published: **${pending.title}**`, flags: 64 },
+      });
+    } catch (err) {
+      console.error('❌ Error publishing content (express):', err);
+      contentState.active = false;
+      await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
+        method: 'PATCH',
+        body: { content: '❌ Failed to create content thread. Please try again.', flags: 64 },
+      });
+    }
+    return;
+  }
+
+  // Step 5: edit details — re-open modal
+  if (componentId === 'content_preview_edit') {
+    return res.send({ type: 9, data: buildContentDetailsModal().toJSON() });
+  }
+
+  // ── Active content role-call button handlers ──────────────────────────────
 
   // Content role-call button handlers
   if (componentId.startsWith('content_role_') || componentId === 'content_fill' || componentId === 'content_cancel') {
@@ -678,74 +997,89 @@ export async function handleButtonInteractions(req, res, client) {
 // Modal submit handler for Express endpoint (interaction type 5)
 export async function handleModalSubmit(req, res, client) {
   const customId = req.body.data.custom_id;
-  if (customId !== 'content_create_modal') {
-    return res.status(400).json({ error: 'unknown modal' });
-  }
-
   const userId = req.body.member?.user?.id || req.body.user?.id;
-  const channelId = req.body.channel_id;
   const modalComponents = req.body.data.components;
 
-  const title = modalComponents[0].components[0].value;
-  const time = modalComponents[1].components[0].value;
-  const demassNotice = modalComponents[2]?.components[0]?.value || '';
+  // ── Custom role batch naming modal ─────────────────────────────────────────
+  if (customId === 'content_custom_modal') {
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 },
+      });
+    }
 
-  const pending = pendingCreations.get(userId);
-  if (!pending?.roles?.length) {
+    const batchStart = pending.customBatchStart || 0;
+    const batchEnd = Math.min(batchStart + 5, pending.partySize);
+
+    // Read each slot name from the modal fields
+    for (let i = batchStart; i < batchEnd; i++) {
+      const field = modalComponents
+        .flatMap(row => row.components)
+        .find(c => c.custom_id === `slot_name_${i}`);
+      const name = (field?.value || `Slot ${i + 1}`).trim();
+      const key = `custom_${i}`;
+      pending.assignedRoles.push(key);
+      pending.customRoleNames[key] = name;
+      pending.currentSlot++;
+    }
+    pending.customBatchStart = batchEnd;
+    pendingCreations.set(userId, pending);
+
+    if (batchEnd < pending.partySize) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `✅ Slots ${batchStart + 1}–${batchEnd} named! Click to continue:`,
+          flags: 64,
+          components: buildCustomContinueButton(batchEnd, pending.partySize).map(r => r.toJSON()),
+        },
+      });
+    } else {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `✅ All **${pending.partySize}** custom roles named!\n\nClick below to set the title, time, and demass notice:`,
+          flags: 64,
+          components: buildContinueToDetailsButton().map(r => r.toJSON()),
+        },
+      });
+    }
+  }
+
+  // ── Content details modal → show preview ───────────────────────────────────
+  if (customId === 'content_create_modal') {
+    const channelId = req.body.channel_id;
+
+    const title = modalComponents[0].components[0].value?.trim() || '';
+    const time = modalComponents[1].components[0].value?.trim() || '';
+    const demassNotice = modalComponents[2]?.components[0]?.value?.trim() || '';
+
+    const pending = pendingCreations.get(userId);
+    if (!pending?.assignedRoles?.length) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 },
+      });
+    }
+
+    pending.title = title;
+    pending.time = time;
+    pending.demassNotice = demassNotice;
+    pendingCreations.set(userId, pending);
+
+    const previewEmbed = buildContentPreviewEmbed(pending);
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: { content: '❌ Session expired. Please run `/content create` again.', flags: 64 }
+      data: {
+        content: '**Step 4 of 4** — Review your content callout:',
+        flags: 64,
+        embeds: [previewEmbed.toJSON()],
+        components: buildPreviewComponents().map(r => r.toJSON()),
+      },
     });
   }
 
-  contentState.active = true;
-  contentState.title = title;
-  contentState.time = time;
-  contentState.demassNotice = demassNotice;
-  contentState.activeRoles = pending.roles;
-  contentState.roles = Object.fromEntries(pending.roles.map(k => [k, null]));
-  contentState.fill = [];
-  pendingCreations.delete(userId);
-
-  // Acknowledge the modal
-  res.send({
-    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-    data: { flags: 64 }
-  });
-
-  try {
-    const embed = buildContentEmbed();
-    const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
-      method: 'POST',
-      body: { name: title, type: 11, auto_archive_duration: 1440 }
-    });
-    const threadData = await threadResponse.json();
-    const threadId = threadData.id;
-
-    const messageResponse = await DiscordRequest(`channels/${threadId}/messages`, {
-      method: 'POST',
-      body: {
-        content: '<@&1344897722196430879>',
-        embeds: [embed.toJSON()],
-        components: buildContentComponents().map(r => r.toJSON())
-      }
-    });
-    const messageData = await messageResponse.json();
-
-    contentState.messageId = messageData.id;
-    contentState.channelId = threadId;
-    contentState.threadId = threadId;
-
-    await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-      method: 'PATCH',
-      body: { content: `✅ Content thread created: **${title}**`, flags: 64 }
-    });
-  } catch (err) {
-    console.error('❌ Error creating content thread from modal:', err);
-    contentState.active = false;
-    await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
-      method: 'PATCH',
-      body: { content: '❌ Failed to create content thread. Please try again.', flags: 64 }
-    });
-  }
+  return res.status(400).json({ error: 'unknown modal' });
 }
