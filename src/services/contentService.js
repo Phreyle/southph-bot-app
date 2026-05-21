@@ -384,12 +384,24 @@ export const buildPresetNondpsMessage = (partySize, selTank = [], selHeal = [], 
 };
 
 // Step 3b (Preset – DPS): four weapon-group selects + confirm/back buttons
-// g1=21 (Swords/Axes/Spears), g2=21 (Daggers/Bows/Xbows),
-// g3=21 (Gloves/Fire/Frost),  g4=17 (Cursed/Quarterstaff/Shapeshifter)
+// Each option is prefixed with its weapon family (e.g. "Shape - Prowling Staff")
+// so users can instantly tell which group they're picking from.
 export const buildPresetDpsMessage = (partySize, nondpsCount, selG1 = [], selG2 = [], selG3 = [], selG4 = []) => {
   const dpsCount = selG1.length + selG2.length + selG3.length + selG4.length;
   const totalSelected = nondpsCount + dpsCount;
   const confirmReady = totalSelected === partySize;
+
+  // Maps key prefix → short family name shown before the weapon name
+  const PREFIX = {
+    sword_: 'Sword',   axe_: 'Axe',      spear_: 'Spear',
+    dagger_: 'Dagger', bow_: 'Bow',       xbow_: 'Crossbow',
+    glove_: 'Gloves',  fire_: 'Fire',     frost_: 'Frost',
+    curse_: 'Curse',   staff_: 'Staff',   shape_: 'Shape',  arcane_: 'Arcane',
+  };
+  const prefixLabel = (r) => {
+    const p = Object.keys(PREFIX).find(k => r.key.startsWith(k));
+    return p ? `${PREFIX[p]} - ${r.label}` : r.label;
+  };
 
   const makeSelect = (customId, placeholder, roles, selected) =>
     new StringSelectMenuBuilder()
@@ -397,7 +409,7 @@ export const buildPresetDpsMessage = (partySize, nondpsCount, selG1 = [], selG2 
       .setPlaceholder(placeholder)
       .setMinValues(0)
       .setMaxValues(Math.min(partySize, roles.length))
-      .addOptions(roles.map(r => ({ label: r.label, value: r.key, default: selected.includes(r.key) })));
+      .addOptions(roles.map(r => ({ label: prefixLabel(r), value: r.key, default: selected.includes(r.key) })));
 
   return {
     content:
@@ -407,7 +419,7 @@ export const buildPresetDpsMessage = (partySize, nondpsCount, selG1 = [], selG2 
       new ActionRowBuilder().addComponents(makeSelect('content_preset_dps_g1', '⚔️ Swords / Axes / Spears',           DPS_GROUPS.g1, selG1)),
       new ActionRowBuilder().addComponents(makeSelect('content_preset_dps_g2', '🗡️ Daggers / Bows / Crossbows',       DPS_GROUPS.g2, selG2)),
       new ActionRowBuilder().addComponents(makeSelect('content_preset_dps_g3', '🥊 Gloves / Fire Staff / Frost Staff', DPS_GROUPS.g3, selG3)),
-      new ActionRowBuilder().addComponents(makeSelect('content_preset_dps_g4', '💀 Cursed / Quarterstaff / Shape',    DPS_GROUPS.g4, selG4)),
+      new ActionRowBuilder().addComponents(makeSelect('content_preset_dps_g4', '💀 Cursed / Quarterstaff / Shape / Arcane', DPS_GROUPS.g4, selG4)),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('content_preset_to_nondps')
