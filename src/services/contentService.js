@@ -146,85 +146,91 @@ export const buildMethodSelector = () => [
   ),
 ];
 
-// Step 3 (Preset): category buttons — shown for each slot
-export const buildSlotCategorySelector = (slotNum, partySize, assignedRoles) => {
-  const progressLines = assignedRoles.map((key, i) => {
-    const name = ROLE_MAP[key]?.label || key;
-    return `✅ Slot ${i + 1}: **${name}**`;
-  });
+// ─── EDIT ROLES HERE ──────────────────────────────────────────────────────────
+// To add/remove/rename preset roles, edit MASTER_ROLES near the top of this file.
+// Each entry needs: key (unique ID), label (full display name), shortLabel (abbrev), category.
+// Categories: 'tank' | 'heal' | 'support' | 'dps'
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const content = [
-    `**Step 3 of 4** — Assign preset roles for your **${partySize}-slot** party`,
-    progressLines.length > 0 ? progressLines.join('\n') : '',
-    `\n**Slot ${slotNum} of ${partySize}** — Choose a category:`,
-  ].filter(Boolean).join('\n');
+// Step 3 (Preset): two multi-selects in one message (Tank/Heal/Support + DPS)
+// selectedNondps / selectedDps are string arrays of previously chosen role keys
+export const buildPresetRoleMessage = (partySize, selectedNondps = [], selectedDps = []) => {
+  const totalSelected = selectedNondps.length + selectedDps.length;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('content_cat_tank').setLabel('🛡️ Tank').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('content_cat_heal').setLabel('💚 Heal').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('content_cat_support').setLabel('🔷 Support').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('content_cat_dps').setLabel('⚔️ DPS').setStyle(ButtonStyle.Danger),
-  );
+  const nonDpsRoles = [
+    ...ROLES_BY_CATEGORY.tank,
+    ...ROLES_BY_CATEGORY.heal,
+    ...ROLES_BY_CATEGORY.support,
+  ];
 
-  return { content, components: [row] };
+  const nonDpsOptions = nonDpsRoles.map(r => ({
+    label: r.label,
+    value: r.key,
+    default: selectedNondps.includes(r.key),
+  }));
+
+  const dpsOptions = ROLES_BY_CATEGORY.dps.map(r => ({
+    label: r.label,
+    value: r.key,
+    default: selectedDps.includes(r.key),
+  }));
+
+  const nondpsSelect = new StringSelectMenuBuilder()
+    .setCustomId('content_preset_nondps')
+    .setPlaceholder('🛡️ Tank / 💚 Heal / 🔷 Support roles')
+    .setMinValues(0)
+    .setMaxValues(Math.min(partySize, nonDpsRoles.length))
+    .addOptions(nonDpsOptions);
+
+  const dpsSelect = new StringSelectMenuBuilder()
+    .setCustomId('content_preset_dps')
+    .setPlaceholder('⚔️ DPS roles')
+    .setMinValues(0)
+    .setMaxValues(Math.min(partySize, ROLES_BY_CATEGORY.dps.length))
+    .addOptions(dpsOptions);
+
+  const statusLabel = totalSelected === partySize
+    ? `✅ ${totalSelected}/${partySize} — ready!`
+    : `${totalSelected}/${partySize} selected`;
+
+  return {
+    content:
+      `**Step 3 of 4** — Select exactly **${partySize}** roles *(${statusLabel})*\n` +
+      `Use the first dropdown for Tank/Heal/Support, second for DPS.`,
+    components: [
+      new ActionRowBuilder().addComponents(nondpsSelect),
+      new ActionRowBuilder().addComponents(dpsSelect),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('content_preset_confirm')
+          .setLabel(totalSelected === partySize
+            ? `✅ Confirm ${totalSelected} roles`
+            : `Confirm (${totalSelected}/${partySize})`)
+          .setStyle(totalSelected === partySize ? ButtonStyle.Success : ButtonStyle.Secondary),
+      ),
+    ],
+  };
 };
 
-// Step 3 (Preset): role dropdown for a specific category
-export const buildCategoryRoleSelect = (category, slotNum, partySize) => {
-  const roles = ROLES_BY_CATEGORY[category] || [];
-  const options = roles.map(r => ({ label: r.label, value: r.key }));
-
-  const selectRow = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`content_cat_select_${category}`)
-      .setPlaceholder(`Slot ${slotNum}/${partySize} — pick a ${category.toUpperCase()} role`)
-      .addOptions(options),
-  );
-  const backRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('content_cat_back')
-      .setLabel('↩️ Back to Categories')
-      .setStyle(ButtonStyle.Secondary),
-  );
-
-  return [selectRow, backRow];
-};
-
-// Step 3 (Custom): modal for naming a batch of slots
-export const buildCustomBatchModal = (batchStart, partySize) => {
-  const batchEnd = Math.min(batchStart + 5, partySize);
-  const inputs = [];
-  for (let i = batchStart; i < batchEnd; i++) {
-    inputs.push(
+// Step 3 (Custom): one multiline modal — enter all roles, one per line
+export const buildCustomRoleModal = (partySize) =>
+  new ModalBuilder()
+    .setCustomId('content_custom_modal')
+    .setTitle(`Custom Roles — ${partySize} slots`)
+    .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
-          .setCustomId(`slot_name_${i}`)
-          .setLabel(`Slot ${i + 1} Role Name`)
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('e.g. DPS, Tank, Bomb Squad, Scout...')
+          .setCustomId('custom_roles_text')
+          .setLabel(`Enter ${partySize} roles, one per line`)
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder(
+            'DPS — Shadowcaller (SC)\nHeal — Hallowfall (HF)\nTank — Grovekeeper (GA)\n...'
+          )
           .setRequired(true)
-          .setMaxLength(50),
+          .setMinLength(3)
+          .setMaxLength(1000),
       ),
     );
-  }
-  return new ModalBuilder()
-    .setCustomId('content_custom_modal')
-    .setTitle(`Name Your Roles (Slots ${batchStart + 1}–${batchEnd})`)
-    .addComponents(...inputs);
-};
-
-// "Continue naming slots" button (after a custom batch modal)
-export const buildCustomContinueButton = (nextBatchStart, partySize) => {
-  const batchEnd = Math.min(nextBatchStart + 5, partySize);
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('content_custom_continue')
-        .setLabel(`📝 Name Slots ${nextBatchStart + 1}–${batchEnd}`)
-        .setStyle(ButtonStyle.Primary),
-    ),
-  ];
-};
 
 // "Set content details" button — shown when all slots are assigned
 export const buildContinueToDetailsButton = () => [

@@ -8,7 +8,7 @@ import {
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { registerUser } from '../systems/albion/albion.js';
 import { EmbedBuilder } from 'discord.js';
-import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildSlotCategorySelector, buildCategoryRoleSelect, buildCustomBatchModal, buildCustomContinueButton, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, autoAssignFillPlayers, ROLE_MAP } from '../services/contentService.js';
+import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildPresetRoleMessage, buildCustomRoleModal, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, autoAssignFillPlayers, ROLE_MAP } from '../services/contentService.js';
 import { contentState, pendingCreations } from '../config/contentState.js';
 
 // Shared logic for all content button interactions
@@ -92,37 +92,33 @@ export async function handleInteractionCreate(interaction) {
         return;
       }
 
-      // Step 3 (Preset): a category role was selected
-      if (customId.startsWith('content_cat_select_')) {
-        const category = customId.replace('content_cat_select_', '');
-        const roleKey = interaction.values[0];
+      // Step 3 (Preset): non-DPS roles selected — update state and re-render
+      if (customId === 'content_preset_nondps') {
         const userId = interaction.user.id;
         const pending = pendingCreations.get(userId);
         if (!pending) {
           await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
           return;
         }
-
-        // Assign this role to the current slot
-        pending.assignedRoles.push(roleKey);
-        pending.currentSlot++;
+        pending.presetNondps = interaction.values;
         pendingCreations.set(userId, pending);
+        const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps, pending.presetDps || []);
+        await interaction.update({ content, components });
+        return;
+      }
 
-        if (pending.currentSlot < pending.partySize) {
-          // More slots to fill
-          const { content, components } = buildSlotCategorySelector(
-            pending.currentSlot + 1,
-            pending.partySize,
-            pending.assignedRoles,
-          );
-          await interaction.update({ content, components });
-        } else {
-          // All slots filled → prompt for content details
-          await interaction.update({
-            content: `**Step 3 of 4 complete!**\nAll **${pending.partySize}** preset roles assigned.\n\nClick below to set the title, time, and demass notice:`,
-            components: buildContinueToDetailsButton(),
-          });
+      // Step 3 (Preset): DPS roles selected — update state and re-render
+      if (customId === 'content_preset_dps') {
+        const userId = interaction.user.id;
+        const pending = pendingCreations.get(userId);
+        if (!pending) {
+          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+          return;
         }
+        pending.presetDps = interaction.values;
+        pendingCreations.set(userId, pending);
+        const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps || [], pending.presetDps);
+        await interaction.update({ content, components });
         return;
       }
       return;
@@ -132,7 +128,7 @@ export async function handleInteractionCreate(interaction) {
     if (interaction.isModalSubmit()) {
       const customId = interaction.customId;
 
-      // Custom role batch naming modal
+      // Custom role modal — parse one role per line
       if (customId === 'content_custom_modal') {
         const userId = interaction.user.id;
         const pending = pendingCreations.get(userId);
@@ -141,34 +137,31 @@ export async function handleInteractionCreate(interaction) {
           return;
         }
 
-        // Read slot names from this batch
-        const batchStart = pending.customBatchStart || 0;
-        const batchEnd = Math.min(batchStart + 5, pending.partySize);
-        for (let i = batchStart; i < batchEnd; i++) {
-          const name = interaction.fields.getTextInputValue(`slot_name_${i}`).trim();
+        const rawText = interaction.fields.getTextInputValue('custom_roles_text').trim();
+        const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+
+        if (lines.length !== pending.partySize) {
+          await interaction.reply({
+            content: `❌ You entered **${lines.length}** roles but party size is **${pending.partySize}**. Please try again and enter exactly ${pending.partySize} roles (one per line).`,
+            ephemeral: true,
+          });
+          return;
+        }
+
+        pending.assignedRoles = [];
+        pending.customRoleNames = {};
+        lines.forEach((name, i) => {
           const key = `custom_${i}`;
           pending.assignedRoles.push(key);
           pending.customRoleNames[key] = name;
-          pending.currentSlot++;
-        }
-        pending.customBatchStart = batchEnd;
+        });
         pendingCreations.set(userId, pending);
 
         await interaction.deferReply({ ephemeral: true });
-
-        if (batchEnd < pending.partySize) {
-          // More batches to name
-          await interaction.editReply({
-            content: `✅ Slots ${batchStart + 1}–${batchEnd} named! Click to continue:`,
-            components: buildCustomContinueButton(batchEnd, pending.partySize),
-          });
-        } else {
-          // All slots named → ready for content details
-          await interaction.editReply({
-            content: `✅ All **${pending.partySize}** custom roles named!\n\nClick below to set the title, time, and demass notice:`,
-            components: buildContinueToDetailsButton(),
-          });
-        }
+        await interaction.editReply({
+          content: `✅ All **${pending.partySize}** custom roles set!\n\nClick below to set the title, time, and demass notice:`,
+          components: buildContinueToDetailsButton(),
+        });
         return;
       }
 
@@ -209,7 +202,7 @@ export async function handleInteractionCreate(interaction) {
 
     // ── Content creation wizard buttons ──────────────────────────────────────
 
-    // Step 2 → Custom: open first batch modal
+    // Step 2 → Custom: open single multiline modal
     if (customId === 'content_method_custom') {
       const userId = interaction.user.id;
       const pending = pendingCreations.get(userId);
@@ -219,11 +212,11 @@ export async function handleInteractionCreate(interaction) {
       }
       pending.method = 'custom';
       pendingCreations.set(userId, pending);
-      await interaction.showModal(buildCustomBatchModal(0, pending.partySize));
+      await interaction.showModal(buildCustomRoleModal(pending.partySize));
       return;
     }
 
-    // Step 2 → Preset: show first slot category selector
+    // Step 2 → Preset: show all-roles multi-select
     if (customId === 'content_method_dropdown') {
       const userId = interaction.user.id;
       const pending = pendingCreations.get(userId);
@@ -233,55 +226,34 @@ export async function handleInteractionCreate(interaction) {
       }
       pending.method = 'dropdown';
       pendingCreations.set(userId, pending);
-      const { content, components } = buildSlotCategorySelector(1, pending.partySize, []);
+      const { content, components } = buildPresetRoleMessage(pending.partySize, [], []);
       await interaction.update({ content, components });
       return;
     }
 
-    // Step 3 (Preset): category chosen — show role dropdown for that category
-    if (['content_cat_tank', 'content_cat_heal', 'content_cat_support', 'content_cat_dps'].includes(customId)) {
-      const category = customId.replace('content_cat_', '');
+    // Step 3 (Preset): confirm selection — validate count then open details modal
+    if (customId === 'content_preset_confirm') {
       const userId = interaction.user.id;
       const pending = pendingCreations.get(userId);
       if (!pending) {
         await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
         return;
       }
-      const slotNum = (pending.currentSlot || 0) + 1;
-      await interaction.update({
-        content: `**Slot ${slotNum} of ${pending.partySize}** — Select a **${category.toUpperCase()}** role:`,
-        components: buildCategoryRoleSelect(category, slotNum, pending.partySize),
-      });
-      return;
-    }
-
-    // Step 3 (Preset): back to category buttons
-    if (customId === 'content_cat_back') {
-      const userId = interaction.user.id;
-      const pending = pendingCreations.get(userId);
-      if (!pending) {
-        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+      const combined = [...(pending.presetNondps || []), ...(pending.presetDps || [])];
+      if (combined.length !== pending.partySize) {
+        await interaction.reply({
+          content: `❌ You selected **${combined.length}** roles but party size is **${pending.partySize}**. Please select exactly ${pending.partySize} roles.`,
+          ephemeral: true,
+        });
         return;
       }
-      const slotNum = (pending.currentSlot || 0) + 1;
-      const { content, components } = buildSlotCategorySelector(slotNum, pending.partySize, pending.assignedRoles);
-      await interaction.update({ content, components });
+      pending.assignedRoles = combined;
+      pendingCreations.set(userId, pending);
+      await interaction.showModal(buildContentDetailsModal());
       return;
     }
 
-    // Step 3 (Custom): continue to next batch modal
-    if (customId === 'content_custom_continue') {
-      const userId = interaction.user.id;
-      const pending = pendingCreations.get(userId);
-      if (!pending) {
-        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
-        return;
-      }
-      await interaction.showModal(buildCustomBatchModal(pending.customBatchStart, pending.partySize));
-      return;
-    }
-
-    // Step 3 → 4: open content details modal
+    // Step 3 → 4: open content details modal (custom path)
     if (customId === 'content_details_btn') {
       await interaction.showModal(buildContentDetailsModal());
       return;
@@ -504,7 +476,7 @@ export async function handleButtonInteractions(req, res, client) {
     });
   }
 
-  // Step 2 → Custom: open first batch modal
+  // Step 2 → Custom: open single multiline modal
   if (componentId === 'content_method_custom') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
@@ -512,10 +484,10 @@ export async function handleButtonInteractions(req, res, client) {
     }
     pending.method = 'custom';
     pendingCreations.set(userId, pending);
-    return res.send({ type: 9, data: buildCustomBatchModal(0, pending.partySize).toJSON() });
+    return res.send({ type: 9, data: buildCustomRoleModal(pending.partySize).toJSON() });
   }
 
-  // Step 2 → Preset: show first slot category selector
+  // Step 2 → Preset: show all-roles multi-select
   if (componentId === 'content_method_dropdown') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
@@ -523,84 +495,62 @@ export async function handleButtonInteractions(req, res, client) {
     }
     pending.method = 'dropdown';
     pendingCreations.set(userId, pending);
-    const { content, components } = buildSlotCategorySelector(1, pending.partySize, []);
+    const { content, components } = buildPresetRoleMessage(pending.partySize, [], []);
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
       data: { content, components: components.map(r => r.toJSON()) },
     });
   }
 
-  // Step 3 (Preset): category chosen — show role dropdown
-  if (['content_cat_tank', 'content_cat_heal', 'content_cat_support', 'content_cat_dps'].includes(componentId)) {
-    const category = componentId.replace('content_cat_', '');
+  // Step 3 (Preset): non-DPS roles selected — update state and re-render
+  if (componentId === 'content_preset_nondps') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
       return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
     }
-    const slotNum = (pending.currentSlot || 0) + 1;
+    pending.presetNondps = req.body.data.values;
+    pendingCreations.set(userId, pending);
+    const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps, pending.presetDps || []);
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
-      data: {
-        content: `**Slot ${slotNum} of ${pending.partySize}** — Select a **${category.toUpperCase()}** role:`,
-        components: buildCategoryRoleSelect(category, slotNum, pending.partySize).map(r => r.toJSON()),
-      },
+      data: { content, components: components.map(r => r.toJSON()) },
     });
   }
 
-  // Step 3 (Preset): category role selected
-  if (componentId.startsWith('content_cat_select_')) {
-    const category = componentId.replace('content_cat_select_', '');
-    const roleKey = req.body.data.values[0];
+  // Step 3 (Preset): DPS roles selected — update state and re-render
+  if (componentId === 'content_preset_dps') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
       return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
     }
-    pending.assignedRoles.push(roleKey);
-    pending.currentSlot++;
+    pending.presetDps = req.body.data.values;
     pendingCreations.set(userId, pending);
+    const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps || [], pending.presetDps);
+    return res.send({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: { content, components: components.map(r => r.toJSON()) },
+    });
+  }
 
-    if (pending.currentSlot < pending.partySize) {
-      const { content, components } = buildSlotCategorySelector(
-        pending.currentSlot + 1,
-        pending.partySize,
-        pending.assignedRoles,
-      );
+  // Step 3 (Preset): confirm selection — validate count then open details modal
+  if (componentId === 'content_preset_confirm') {
+    const pending = pendingCreations.get(userId);
+    if (!pending) {
+      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+    }
+    const combined = [...(pending.presetNondps || []), ...(pending.presetDps || [])];
+    if (combined.length !== pending.partySize) {
       return res.send({
-        type: InteractionResponseType.UPDATE_MESSAGE,
-        data: { content, components: components.map(r => r.toJSON()) },
-      });
-    } else {
-      return res.send({
-        type: InteractionResponseType.UPDATE_MESSAGE,
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `**Step 3 of 4 complete!**\nAll **${pending.partySize}** preset roles assigned.\n\nClick below to set the title, time, and demass notice:`,
-          components: buildContinueToDetailsButton().map(r => r.toJSON()),
+          content: `❌ You selected **${combined.length}** roles but party size is **${pending.partySize}**. Please select exactly ${pending.partySize} roles.`,
+          flags: 64,
         },
       });
     }
-  }
-
-  // Step 3 (Preset): back to category buttons
-  if (componentId === 'content_cat_back') {
-    const pending = pendingCreations.get(userId);
-    if (!pending) {
-      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
-    }
-    const slotNum = (pending.currentSlot || 0) + 1;
-    const { content, components } = buildSlotCategorySelector(slotNum, pending.partySize, pending.assignedRoles);
-    return res.send({
-      type: InteractionResponseType.UPDATE_MESSAGE,
-      data: { content, components: components.map(r => r.toJSON()) },
-    });
-  }
-
-  // Step 3 (Custom): continue to next batch modal
-  if (componentId === 'content_custom_continue') {
-    const pending = pendingCreations.get(userId);
-    if (!pending) {
-      return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
-    }
-    return res.send({ type: 9, data: buildCustomBatchModal(pending.customBatchStart, pending.partySize).toJSON() });
+    pending.assignedRoles = combined;
+    pendingCreations.set(userId, pending);
+    return res.send({ type: 9, data: buildContentDetailsModal().toJSON() });
   }
 
   // Step 3 → 4: open content details modal
@@ -1000,7 +950,7 @@ export async function handleModalSubmit(req, res, client) {
   const userId = req.body.member?.user?.id || req.body.user?.id;
   const modalComponents = req.body.data.components;
 
-  // ── Custom role batch naming modal ─────────────────────────────────────────
+  // ── Custom role modal — parse one role per line ───────────────────────────
   if (customId === 'content_custom_modal') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
@@ -1010,42 +960,39 @@ export async function handleModalSubmit(req, res, client) {
       });
     }
 
-    const batchStart = pending.customBatchStart || 0;
-    const batchEnd = Math.min(batchStart + 5, pending.partySize);
+    const rawField = modalComponents
+      .flatMap(row => row.components)
+      .find(c => c.custom_id === 'custom_roles_text');
+    const rawText = (rawField?.value || '').trim();
+    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
-    // Read each slot name from the modal fields
-    for (let i = batchStart; i < batchEnd; i++) {
-      const field = modalComponents
-        .flatMap(row => row.components)
-        .find(c => c.custom_id === `slot_name_${i}`);
-      const name = (field?.value || `Slot ${i + 1}`).trim();
+    if (lines.length !== pending.partySize) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `❌ You entered **${lines.length}** roles but party size is **${pending.partySize}**. Please try again and enter exactly ${pending.partySize} roles (one per line).`,
+          flags: 64,
+        },
+      });
+    }
+
+    pending.assignedRoles = [];
+    pending.customRoleNames = {};
+    lines.forEach((name, i) => {
       const key = `custom_${i}`;
       pending.assignedRoles.push(key);
       pending.customRoleNames[key] = name;
-      pending.currentSlot++;
-    }
-    pending.customBatchStart = batchEnd;
+    });
     pendingCreations.set(userId, pending);
 
-    if (batchEnd < pending.partySize) {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: `✅ Slots ${batchStart + 1}–${batchEnd} named! Click to continue:`,
-          flags: 64,
-          components: buildCustomContinueButton(batchEnd, pending.partySize).map(r => r.toJSON()),
-        },
-      });
-    } else {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: `✅ All **${pending.partySize}** custom roles named!\n\nClick below to set the title, time, and demass notice:`,
-          flags: 64,
-          components: buildContinueToDetailsButton().map(r => r.toJSON()),
-        },
-      });
-    }
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: `✅ All **${pending.partySize}** custom roles set!\n\nClick below to set the title, time, and demass notice:`,
+        flags: 64,
+        components: buildContinueToDetailsButton().map(r => r.toJSON()),
+      },
+    });
   }
 
   // ── Content details modal → show preview ───────────────────────────────────

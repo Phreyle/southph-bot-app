@@ -209,8 +209,8 @@ export async function handleSlashCommands(req, res, client) {
         method: null,
         assignedRoles: [],
         customRoleNames: {},
-        currentSlot: 0,
-        customBatchStart: 0,
+        presetNondps: [],
+        presetDps: [],
       });
 
       return res.send({
