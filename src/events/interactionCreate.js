@@ -8,7 +8,7 @@ import {
 import { buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { registerUser } from '../systems/albion/albion.js';
 import { EmbedBuilder } from 'discord.js';
-import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildPresetRoleMessage, buildCustomRoleModal, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, autoAssignFillPlayers, ROLE_MAP } from '../services/contentService.js';
+import { buildContentEmbed, buildContentComponents, buildMethodSelector, buildPresetNondpsMessage, buildPresetDpsMessage, buildCustomRoleModal, buildContinueToDetailsButton, buildContentDetailsModal, buildContentPreviewEmbed, buildPreviewComponents, autoAssignFillPlayers, ROLE_MAP } from '../services/contentService.js';
 import { contentState, pendingCreations } from '../config/contentState.js';
 
 // Shared logic for all content button interactions
@@ -82,8 +82,13 @@ export async function handleInteractionCreate(interaction) {
           method: null,
           assignedRoles: [],
           customRoleNames: {},
-          currentSlot: 0,
-          customBatchStart: 0,
+          presetTank: [],
+          presetHeal: [],
+          presetSupport: [],
+          presetDpsG1: [],
+          presetDpsG2: [],
+          presetDpsG3: [],
+          presetDpsG4: [],
         });
         await interaction.update({
           content: `**Step 2 of 4** — Party size: **${partySize}**\nHow do you want to assign roles?`,
@@ -92,34 +97,48 @@ export async function handleInteractionCreate(interaction) {
         return;
       }
 
-      // Step 3 (Preset): non-DPS roles selected — update state and re-render
-      if (customId === 'content_preset_nondps') {
-        const userId = interaction.user.id;
-        const pending = pendingCreations.get(userId);
-        if (!pending) {
-          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+      // Step 3a (Preset): Tank/Heal/Support selects — update state and re-render non-DPS message
+      for (const [field, id] of [
+        ['presetTank', 'content_preset_tank'],
+        ['presetHeal', 'content_preset_heal'],
+        ['presetSupport', 'content_preset_support'],
+      ]) {
+        if (customId === id) {
+          const userId = interaction.user.id;
+          const pending = pendingCreations.get(userId);
+          if (!pending) {
+            await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+            return;
+          }
+          pending[field] = interaction.values;
+          pendingCreations.set(userId, pending);
+          const { content, components } = buildPresetNondpsMessage(pending.partySize, pending.presetTank, pending.presetHeal, pending.presetSupport);
+          await interaction.update({ content, components });
           return;
         }
-        pending.presetNondps = interaction.values;
-        pendingCreations.set(userId, pending);
-        const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps, pending.presetDps || []);
-        await interaction.update({ content, components });
-        return;
       }
 
-      // Step 3 (Preset): DPS roles selected — update state and re-render
-      if (customId === 'content_preset_dps') {
-        const userId = interaction.user.id;
-        const pending = pendingCreations.get(userId);
-        if (!pending) {
-          await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+      // Step 3b (Preset): DPS group selects — update state and re-render DPS message
+      for (const [field, id] of [
+        ['presetDpsG1', 'content_preset_dps_g1'],
+        ['presetDpsG2', 'content_preset_dps_g2'],
+        ['presetDpsG3', 'content_preset_dps_g3'],
+        ['presetDpsG4', 'content_preset_dps_g4'],
+      ]) {
+        if (customId === id) {
+          const userId = interaction.user.id;
+          const pending = pendingCreations.get(userId);
+          if (!pending) {
+            await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+            return;
+          }
+          pending[field] = interaction.values;
+          pendingCreations.set(userId, pending);
+          const nondpsCount = (pending.presetTank?.length || 0) + (pending.presetHeal?.length || 0) + (pending.presetSupport?.length || 0);
+          const { content, components } = buildPresetDpsMessage(pending.partySize, nondpsCount, pending.presetDpsG1, pending.presetDpsG2, pending.presetDpsG3, pending.presetDpsG4);
+          await interaction.update({ content, components });
           return;
         }
-        pending.presetDps = interaction.values;
-        pendingCreations.set(userId, pending);
-        const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps || [], pending.presetDps);
-        await interaction.update({ content, components });
-        return;
       }
       return;
     }
@@ -216,7 +235,7 @@ export async function handleInteractionCreate(interaction) {
       return;
     }
 
-    // Step 2 → Preset: show all-roles multi-select
+    // Step 2 → Preset: show non-DPS selection (first preset message)
     if (customId === 'content_method_dropdown') {
       const userId = interaction.user.id;
       const pending = pendingCreations.get(userId);
@@ -226,7 +245,34 @@ export async function handleInteractionCreate(interaction) {
       }
       pending.method = 'dropdown';
       pendingCreations.set(userId, pending);
-      const { content, components } = buildPresetRoleMessage(pending.partySize, [], []);
+      const { content, components } = buildPresetNondpsMessage(pending.partySize, [], [], []);
+      await interaction.update({ content, components });
+      return;
+    }
+
+    // Step 3 (Preset): navigate to DPS selection
+    if (customId === 'content_preset_to_dps') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      const nondpsCount = (pending.presetTank?.length || 0) + (pending.presetHeal?.length || 0) + (pending.presetSupport?.length || 0);
+      const { content, components } = buildPresetDpsMessage(pending.partySize, nondpsCount, pending.presetDpsG1 || [], pending.presetDpsG2 || [], pending.presetDpsG3 || [], pending.presetDpsG4 || []);
+      await interaction.update({ content, components });
+      return;
+    }
+
+    // Step 3 (Preset): navigate back to non-DPS selection
+    if (customId === 'content_preset_to_nondps') {
+      const userId = interaction.user.id;
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
+        return;
+      }
+      const { content, components } = buildPresetNondpsMessage(pending.partySize, pending.presetTank || [], pending.presetHeal || [], pending.presetSupport || []);
       await interaction.update({ content, components });
       return;
     }
@@ -239,7 +285,15 @@ export async function handleInteractionCreate(interaction) {
         await interaction.reply({ content: '❌ Session expired. Run `/content create` again.', ephemeral: true });
         return;
       }
-      const combined = [...(pending.presetNondps || []), ...(pending.presetDps || [])];
+      const combined = [
+        ...(pending.presetTank || []),
+        ...(pending.presetHeal || []),
+        ...(pending.presetSupport || []),
+        ...(pending.presetDpsG1 || []),
+        ...(pending.presetDpsG2 || []),
+        ...(pending.presetDpsG3 || []),
+        ...(pending.presetDpsG4 || []),
+      ];
       if (combined.length !== pending.partySize) {
         await interaction.reply({
           content: `❌ You selected **${combined.length}** roles but party size is **${pending.partySize}**. Please select exactly ${pending.partySize} roles.`,
@@ -464,8 +518,13 @@ export async function handleButtonInteractions(req, res, client) {
       method: null,
       assignedRoles: [],
       customRoleNames: {},
-      currentSlot: 0,
-      customBatchStart: 0,
+      presetTank: [],
+      presetHeal: [],
+      presetSupport: [],
+      presetDpsG1: [],
+      presetDpsG2: [],
+      presetDpsG3: [],
+      presetDpsG4: [],
     });
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
@@ -487,7 +546,7 @@ export async function handleButtonInteractions(req, res, client) {
     return res.send({ type: 9, data: buildCustomRoleModal(pending.partySize).toJSON() });
   }
 
-  // Step 2 → Preset: show all-roles multi-select
+  // Step 2 → Preset: show non-DPS selection (first preset message)
   if (componentId === 'content_method_dropdown') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
@@ -495,37 +554,78 @@ export async function handleButtonInteractions(req, res, client) {
     }
     pending.method = 'dropdown';
     pendingCreations.set(userId, pending);
-    const { content, components } = buildPresetRoleMessage(pending.partySize, [], []);
+    const { content, components } = buildPresetNondpsMessage(pending.partySize, [], [], []);
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
       data: { content, components: components.map(r => r.toJSON()) },
     });
   }
 
-  // Step 3 (Preset): non-DPS roles selected — update state and re-render
-  if (componentId === 'content_preset_nondps') {
+  // Step 3a (Preset): Tank/Heal/Support selects — update state and re-render non-DPS message
+  for (const [field, id] of [
+    ['presetTank', 'content_preset_tank'],
+    ['presetHeal', 'content_preset_heal'],
+    ['presetSupport', 'content_preset_support'],
+  ]) {
+    if (componentId === id) {
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+      }
+      pending[field] = req.body.data.values;
+      pendingCreations.set(userId, pending);
+      const { content, components } = buildPresetNondpsMessage(pending.partySize, pending.presetTank, pending.presetHeal, pending.presetSupport);
+      return res.send({
+        type: InteractionResponseType.UPDATE_MESSAGE,
+        data: { content, components: components.map(r => r.toJSON()) },
+      });
+    }
+  }
+
+  // Step 3b (Preset): DPS group selects — update state and re-render DPS message
+  for (const [field, id] of [
+    ['presetDpsG1', 'content_preset_dps_g1'],
+    ['presetDpsG2', 'content_preset_dps_g2'],
+    ['presetDpsG3', 'content_preset_dps_g3'],
+    ['presetDpsG4', 'content_preset_dps_g4'],
+  ]) {
+    if (componentId === id) {
+      const pending = pendingCreations.get(userId);
+      if (!pending) {
+        return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
+      }
+      pending[field] = req.body.data.values;
+      pendingCreations.set(userId, pending);
+      const nondpsCount = (pending.presetTank?.length || 0) + (pending.presetHeal?.length || 0) + (pending.presetSupport?.length || 0);
+      const { content, components } = buildPresetDpsMessage(pending.partySize, nondpsCount, pending.presetDpsG1, pending.presetDpsG2, pending.presetDpsG3, pending.presetDpsG4);
+      return res.send({
+        type: InteractionResponseType.UPDATE_MESSAGE,
+        data: { content, components: components.map(r => r.toJSON()) },
+      });
+    }
+  }
+
+  // Step 3 (Preset): navigate to DPS selection
+  if (componentId === 'content_preset_to_dps') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
       return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
     }
-    pending.presetNondps = req.body.data.values;
-    pendingCreations.set(userId, pending);
-    const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps, pending.presetDps || []);
+    const nondpsCount = (pending.presetTank?.length || 0) + (pending.presetHeal?.length || 0) + (pending.presetSupport?.length || 0);
+    const { content, components } = buildPresetDpsMessage(pending.partySize, nondpsCount, pending.presetDpsG1 || [], pending.presetDpsG2 || [], pending.presetDpsG3 || [], pending.presetDpsG4 || []);
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
       data: { content, components: components.map(r => r.toJSON()) },
     });
   }
 
-  // Step 3 (Preset): DPS roles selected — update state and re-render
-  if (componentId === 'content_preset_dps') {
+  // Step 3 (Preset): navigate back to non-DPS selection
+  if (componentId === 'content_preset_to_nondps') {
     const pending = pendingCreations.get(userId);
     if (!pending) {
       return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
     }
-    pending.presetDps = req.body.data.values;
-    pendingCreations.set(userId, pending);
-    const { content, components } = buildPresetRoleMessage(pending.partySize, pending.presetNondps || [], pending.presetDps);
+    const { content, components } = buildPresetNondpsMessage(pending.partySize, pending.presetTank || [], pending.presetHeal || [], pending.presetSupport || []);
     return res.send({
       type: InteractionResponseType.UPDATE_MESSAGE,
       data: { content, components: components.map(r => r.toJSON()) },
@@ -538,7 +638,15 @@ export async function handleButtonInteractions(req, res, client) {
     if (!pending) {
       return res.send({ type: 4, data: { content: '❌ Session expired. Run `/content create` again.', flags: 64 } });
     }
-    const combined = [...(pending.presetNondps || []), ...(pending.presetDps || [])];
+    const combined = [
+      ...(pending.presetTank || []),
+      ...(pending.presetHeal || []),
+      ...(pending.presetSupport || []),
+      ...(pending.presetDpsG1 || []),
+      ...(pending.presetDpsG2 || []),
+      ...(pending.presetDpsG3 || []),
+      ...(pending.presetDpsG4 || []),
+    ];
     if (combined.length !== pending.partySize) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
