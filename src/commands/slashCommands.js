@@ -7,7 +7,7 @@ import { loadPermissions, savePermissions } from '../database/guildData.js';
 import { hasPermissionSlash } from '../utils/permissions.js';
 import { buildHelpEmbed, buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
 import { contentState, pendingCreations } from '../config/contentState.js';
-import { buildContentEmbed, buildContentComponents, buildSizeSelector, autoAssignFillPlayers } from '../services/contentService.js';
+import { buildContentEmbed, buildContentComponents, buildSizeSelector, autoAssignFillPlayers, getRoleDisplayName } from '../services/contentService.js';
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
@@ -294,39 +294,77 @@ export async function handleSlashCommands(req, res, client) {
       if (!contentState.active) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: '❌ No active content callout! Use `/content create` first.',
-            flags: 64
-          },
+          data: { content: '❌ No active content callout! Use `/content create` first.', flags: 64 },
         });
       }
 
-      const roleOption = req.body.data.options[0].options[0].value;
+      const removeOpts = req.body.data.options[0].options || [];
+      const userOption = removeOpts.find(o => o.name === 'user')?.value;
+      const slotOption = removeOpts.find(o => o.name === 'slot')?.value;
 
-      if (!contentState.activeRoles.includes(roleOption)) {
+      if (!userOption && slotOption == null) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: `❌ The role **${roleOption}** is not part of this content callout!`,
-            flags: 64
-          },
+          data: { content: '❌ Provide either `user` (mention) or `slot` (slot number).', flags: 64 },
         });
       }
 
-      if (!contentState.roles[roleOption]) {
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: `❌ The **${roleOption.toUpperCase()}** slot is already empty!`,
-            flags: 64
-          },
-        });
+      let roleKey = null;
+      let removedUserId = null;
+
+      if (slotOption != null) {
+        // Remove by slot number (1-based)
+        const idx = parseInt(slotOption) - 1;
+        if (idx < 0 || idx >= contentState.activeRoles.length) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { content: `❌ Slot **${slotOption}** is out of range. There are **${contentState.activeRoles.length}** slots.`, flags: 64 },
+          });
+        }
+        roleKey = contentState.activeRoles[idx];
+        if (!contentState.roles[roleKey]) {
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { content: `❌ Slot **${slotOption}** (${getRoleDisplayName(roleKey, contentState.customRoleNames)}) is already empty.`, flags: 64 },
+          });
+        }
+        removedUserId = contentState.roles[roleKey];
+      } else {
+        // Remove by Discord user — find which slot they're in
+        roleKey = contentState.activeRoles.find(k => contentState.roles[k] === userOption) || null;
+
+        if (!roleKey) {
+          // Check fill list
+          const fillIdx = contentState.fill.indexOf(userOption);
+          if (fillIdx > -1) {
+            contentState.fill.splice(fillIdx, 1);
+            const embed = buildContentEmbed();
+            try {
+              await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
+                method: 'PATCH',
+                body: { embeds: [embed.toJSON()] },
+              });
+            } catch (err) {
+              console.error('Error updating message:', err);
+            }
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: { content: `✅ Removed <@${userOption}> from the **Fill** list.`, flags: 64 },
+            });
+          }
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: { content: `❌ <@${userOption}> is not signed up in any slot or the fill list.`, flags: 64 },
+          });
+        }
+        removedUserId = userOption;
       }
 
-      const removedUserId = contentState.roles[roleOption];
-      contentState.roles[roleOption] = null;
+      contentState.roles[roleKey] = null;
       await autoAssignFillPlayers(client);
 
+      const slotName = getRoleDisplayName(roleKey, contentState.customRoleNames);
+      const slotNum = contentState.activeRoles.indexOf(roleKey) + 1;
       const embed = buildContentEmbed();
       try {
         await DiscordRequest(`channels/${contentState.channelId}/messages/${contentState.messageId}`, {
@@ -335,10 +373,7 @@ export async function handleSlashCommands(req, res, client) {
         });
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: `✅ Removed <@${removedUserId}> from **${roleOption.toUpperCase()}**`,
-            flags: 64
-          },
+          data: { content: `✅ Removed <@${removedUserId}> from slot **#${slotNum} — ${slotName}**.`, flags: 64 },
         });
       } catch (err) {
         console.error('Error updating message:', err);
