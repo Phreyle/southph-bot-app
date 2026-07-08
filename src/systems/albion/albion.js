@@ -3,7 +3,7 @@
  * Supports typed registrations: guild, alliance, player
  */
 
-import { validatePlayerGuild, validatePlayerAlliance } from './albion-api.js';
+import { validatePlayerGuild, validatePlayerAlliance, fetchGuildInfo } from './albion-api.js';
 import {
   loadAlbionConfig,
   getAlbionUser,
@@ -11,8 +11,7 @@ import {
   removeAlbionUser,
   getAllAlbionUsers,
   validateAlbionConfig,
-  findAlbionUserByIGN,
-  getAlbionRegistrationsByType
+  findAlbionUserByIGN
 } from './albion-db.js';
 
 const DEFAULT_ALLIANCE_ROLE_NAME = 'Alliance Member';
@@ -281,15 +280,29 @@ export async function registerUser(guild, discordId, region, ign, playerId = nul
   let validation;
 
   if (normalizedType === 'alliance') {
-    if (!config.allianceName) {
+    if (!config.albionGuildName || !config.albionRegion) {
       return {
         success: false,
         error: 'INCOMPLETE_CONFIG',
-        message: 'Alliance registration is not configured yet. An administrator must run /set alliance-name first.'
+        message: 'Alliance registration requires the guild and region to be configured first (/set guild). Please contact an administrator.'
       };
     }
 
-    validation = await validatePlayerAlliance(region, ign, playerId, config.allianceName);
+    // Look up South PH's *current* alliance live, rather than a static config
+    // value, so this automatically follows if the guild ever switches alliances.
+    const homeGuildInfo = await fetchGuildInfo(config.albionRegion, config.albionGuildName);
+    if (!homeGuildInfo.success) {
+      return homeGuildInfo;
+    }
+    if (!homeGuildInfo.data.AllianceId) {
+      return {
+        success: false,
+        error: 'GUILD_NOT_IN_ALLIANCE',
+        message: `${config.albionGuildName} is not currently in an alliance, so alliance registration isn't available right now.`
+      };
+    }
+
+    validation = await validatePlayerAlliance(region, ign, playerId, homeGuildInfo.data.AllianceId);
   } else {
     const configValidation = validateAlbionConfig(config);
     if (!configValidation.valid) {
@@ -416,7 +429,9 @@ export async function registerUser(guild, discordId, region, ign, playerId = nul
 
 /**
  * Purge users by registration type.
- * For alliance registrations this purges all active alliance registrations.
+ * For alliance registrations this re-verifies each currently role-holding
+ * member against South PH's *current* alliance (looked up live) and removes
+ * anyone who no longer belongs - mirroring how guild purge already works.
  */
 export async function purgeUsers(guild, registerType = 'guild') {
   const guildId = guild.id;
@@ -424,7 +439,27 @@ export async function purgeUsers(guild, registerType = 'guild') {
   const config = loadAlbionConfig(guildId);
 
   if (normalizedType === 'alliance') {
-    const registrations = getAlbionRegistrationsByType(guildId, 'alliance');
+    if (!config.albionGuildName || !config.albionRegion) {
+      return {
+        success: false,
+        error: 'INCOMPLETE_CONFIG',
+        message: 'Alliance purge requires the guild and region to be configured first (/set guild).'
+      };
+    }
+
+    const homeGuildInfo = await fetchGuildInfo(config.albionRegion, config.albionGuildName);
+    if (!homeGuildInfo.success) {
+      return homeGuildInfo;
+    }
+    if (!homeGuildInfo.data.AllianceId) {
+      return {
+        success: false,
+        error: 'GUILD_NOT_IN_ALLIANCE',
+        message: `${config.albionGuildName} is not currently in an alliance, so there is nothing to verify alliance registrations against.`
+      };
+    }
+    const currentAllianceId = homeGuildInfo.data.AllianceId;
+
     const configuredRoles = Array.isArray(config.allianceRoleIds) ? config.allianceRoleIds : [];
     const resolvedRoleIds = [];
     for (const roleRef of configuredRoles) {
@@ -434,42 +469,79 @@ export async function purgeUsers(guild, registerType = 'guild') {
       }
     }
 
+    let membersToCheck = [];
+    try {
+      await guild.members.fetch();
+      const seen = new Set();
+      for (const roleId of resolvedRoleIds) {
+        const role = guild.roles.cache.get(roleId);
+        if (!role) continue;
+        for (const member of role.members.values()) {
+          if (!seen.has(member.id)) {
+            seen.add(member.id);
+            membersToCheck.push(member);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching members for alliance purge:', error);
+      return {
+        success: false,
+        error: 'FETCH_ERROR',
+        message: 'Failed to fetch server members.'
+      };
+    }
+
     const summary = {
       success: true,
-      checked: registrations.length,
+      checked: 0,
       removed: 0,
       valid: 0,
       errors: 0,
       details: []
     };
 
-    for (const registration of registrations) {
-      try {
-        const member = await guild.members.fetch(registration.discord_user_id).catch(() => null);
+    for (const member of membersToCheck) {
+      summary.checked++;
+      const registration = getAlbionUser(guildId, member.id, 'alliance');
 
-        if (member && resolvedRoleIds.length > 0) {
-          for (const roleId of resolvedRoleIds) {
-            if (member.roles.cache.has(roleId)) {
-              await member.roles.remove(roleId).catch(() => null);
-            }
+      if (!registration) {
+        // Holds an alliance role but has no registration at all (e.g. manually
+        // assigned) - treat the same as an alliance mismatch: remove the role.
+        summary.removed++;
+        for (const roleId of resolvedRoleIds) {
+          if (member.roles.cache.has(roleId)) {
+            await member.roles.remove(roleId).catch(() => null);
           }
         }
+        summary.details.push({ discordId: member.id, status: 'no_data', action: 'removed' });
+      } else {
+        try {
+          const validation = await validatePlayerAlliance(
+            registration.region,
+            registration.ign,
+            registration.playerId,
+            currentAllianceId
+          );
 
-        removeAlbionUser(guildId, registration.discord_user_id, 'alliance');
-        summary.removed++;
-        summary.details.push({
-          discordId: registration.discord_user_id,
-          ign: registration.player_name,
-          action: 'removed'
-        });
-      } catch (error) {
-        summary.errors++;
-        summary.details.push({
-          discordId: registration.discord_user_id,
-          ign: registration.player_name,
-          action: 'error'
-        });
+          if (validation.success) {
+            summary.valid++;
+          } else {
+            summary.removed++;
+            for (const roleId of resolvedRoleIds) {
+              if (member.roles.cache.has(roleId)) {
+                await member.roles.remove(roleId).catch(() => null);
+              }
+            }
+            removeAlbionUser(guildId, member.id, 'alliance');
+          }
+        } catch (error) {
+          summary.errors++;
+          console.error(`Error checking alliance for ${registration.ign}:`, error);
+        }
       }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     return summary;

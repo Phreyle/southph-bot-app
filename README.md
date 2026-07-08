@@ -139,18 +139,19 @@ All writes go through a temp-file-then-rename pattern (`src/utils/atomicFile.js`
 | `/set register-role @role` | Role given to verified members |
 | `/set guild-tag <tag>` | Guild tag used in nicknames |
 | `/set nickname-format <format>` | Nickname template (`{ign}`, `{tag}`, `{guild}`, `{region}`) |
-| `/set alliance-name <name>` | **Required** - the alliance members must belong to for `type:alliance` registration to succeed (e.g. "Viltrum Empire"). Until this is set, alliance registration is blocked entirely - it does not fall back to "any alliance." |
 | `/set alliance-role @role` | Alliance registration role |
 | `/set alliance-role-enabled <true\|false>` | Toggle alliance role assignment |
 | `/set alliance-nickname-format <format>` | Alliance nickname template (`{allianceTag}`, `{allianceName}`, `{playerName}`) |
 | `/set alliance-nickname-enabled <true\|false>` | Toggle alliance nickname updates |
 | `/set alliance-nickname-overwrite <true\|false>` | Overwrite existing nickname on re-register |
 | `/forceunregister <ign>` | Force-unregister a member by IGN |
-| `/purge type:guild confirm:true` | Remove members no longer in the guild |
-| `/purge type:alliance confirm:true` | Remove all alliance registrations + roles |
+| `/purge type:guild confirm:true` | Re-verify every guild-registered member against the Albion API and remove anyone no longer in the guild (including members who hold the role but were never registered at all) |
+| `/purge type:alliance confirm:true` | Re-verify every alliance-registered member and remove anyone no longer in the guild's current alliance (same manually-assigned-role handling as guild purge) |
 | `/registered [type:all\|guild\|alliance]` (or `!registered [all\|guild\|alliance]`) | List every registered member with their linked Albion IGN, grouped by type |
 
 If an alliance tag is missing, alliance name is used instead; if both are missing, the nickname falls back to player name only.
+
+**Alliance verification is automatic, not configured.** `type:alliance` registration and `/purge type:alliance` both look up the configured guild's (`/set guild`) *current* alliance live from the Albion API every time, and check the registering/purged player against that - there's no separate alliance name to set or keep in sync. If the guild ever switches alliances in-game, registration and purge pick that up automatically on the next run. If the guild currently isn't in any alliance, alliance registration/purge is unavailable until it joins one.
 
 **Bank**
 

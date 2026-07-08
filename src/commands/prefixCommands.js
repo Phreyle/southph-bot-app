@@ -620,7 +620,6 @@ export async function handlePrefixCommands(message, command, args, prefix) {
           `**Available subcommands:**\n` +
           `\`${prefix}set guild <region> <guild_name>\` - Set region and guild\n` +
           `\`${prefix}set register-role @role\` - Set verified member role\n` +
-          `\`${prefix}set alliance-name <name>\` - Set required alliance for type:alliance registration\n` +
           `\`${prefix}set alliance-role @role\` - Set alliance registration role\n` +
           `\`${prefix}set alliance-role-enabled <true|false>\` - Toggle alliance role assignment\n` +
           `\`${prefix}set alliance-nickname-format <format>\` - Set alliance nickname format\n` +
@@ -632,28 +631,6 @@ export async function handlePrefixCommands(message, command, args, prefix) {
           `**Nickname variables:** {ign}, {tag}, {guild}, {region}\n` +
           `**Alliance nickname variables:** {allianceTag}, {allianceName}, {playerName}`
         );
-      await message.reply({ embeds: [embed] });
-      return;
-    }
-
-    // Subcommand: alliance-name
-    if (subcommand === 'alliance-name') {
-      const allianceName = args.slice(1).join(' ');
-
-      if (!allianceName) {
-        await message.reply(`❌ Usage: \`${prefix}set alliance-name <name>\``);
-        return;
-      }
-
-      config.allianceName = allianceName;
-      saveAlbionConfig(message.guild.id, config);
-
-      const embed = new EmbedBuilder()
-        .setColor(0x57F287)
-        .setTitle('✅ Alliance Name Updated')
-        .setDescription(`\`type:alliance\` registrations must now belong to alliance: **${allianceName}**`)
-        .setTimestamp();
-
       await message.reply({ embeds: [embed] });
       return;
     }
@@ -891,7 +868,6 @@ export async function handlePrefixCommands(message, command, args, prefix) {
         { name: 'Register Role', value: config.registerRoleId ? `<@&${config.registerRoleId}>` : '*Not set*', inline: true },
         { name: 'Guild Tag', value: config.guildTag || '*Not set*', inline: true },
         { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false },
-        { name: 'Required Alliance', value: config.allianceName || '*Not set (alliance registration blocked)*', inline: true },
         { name: 'Alliance Role Assignment', value: config.allianceRoleEnabled ? 'Enabled' : 'Disabled', inline: true },
         { name: 'Alliance Role(s)', value: (config.allianceRoleIds || []).length > 0 ? config.allianceRoleIds.map(id => `<@&${id}>`).join(', ') : '*Not set*', inline: false },
         { name: 'Alliance Nickname Updates', value: config.allianceNicknameEnabled ? 'Enabled' : 'Disabled', inline: true },
@@ -968,6 +944,8 @@ export async function handlePrefixCommands(message, command, args, prefix) {
           errorMessage = `❌ ${result.message}\n\nYou must be in the correct guild to register.`;
         } else if (result.error === 'ALLIANCE_MISMATCH') {
           errorMessage = `❌ ${result.message}\n\nYou must be in our allied alliance to register as Alliance.`;
+        } else if (result.error === 'GUILD_NOT_FOUND' || result.error === 'GUILD_NOT_IN_ALLIANCE') {
+          errorMessage = `❌ ${result.message}\n\nPlease contact an administrator.`;
         } else if (result.error === 'INCOMPLETE_CONFIG') {
           errorMessage = `❌ ${result.message}`;
         }

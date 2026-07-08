@@ -385,19 +385,6 @@ const SET_COMMAND = {
     },
     {
       type: 1, // SUB_COMMAND
-      name: 'alliance-name',
-      description: 'Set the required alliance name for type:alliance registration',
-      options: [
-        {
-          type: 3,
-          name: 'name',
-          description: 'Alliance name in Albion Online (e.g., Viltrum Empire)',
-          required: true
-        }
-      ]
-    },
-    {
-      type: 1, // SUB_COMMAND
       name: 'alliance-role',
       description: 'Set base role assigned to alliance registrations',
       options: [

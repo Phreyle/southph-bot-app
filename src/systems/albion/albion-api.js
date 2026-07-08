@@ -198,6 +198,63 @@ export async function fetchPlayerInfoById(region, playerId) {
 }
 
 /**
+ * Fetch a guild's current info (including its current alliance) by name
+ * @param {string} region - Region (americas, europe, asia)
+ * @param {string} guildName - Guild name to look up
+ * @returns {Promise<Object>} Guild data with Id, Name, AllianceId, AllianceName
+ */
+export async function fetchGuildInfo(region, guildName) {
+  const baseUrl = getRegionApiUrl(region);
+
+  if (!baseUrl) {
+    throw new Error(`Invalid region: ${region}. Valid regions: americas, europe, asia`);
+  }
+
+  try {
+    const searchUrl = `${baseUrl}/search?q=${encodeURIComponent(guildName)}`;
+    const searchResponse = await axios.get(searchUrl, { timeout: 10000 });
+    const guilds = searchResponse.data.guilds || [];
+
+    // Note: the search/guild-info endpoints often return an empty AllianceName
+    // even when AllianceId is populated - AllianceId is the reliable field here.
+    const exactMatch = guilds.find((g) => g.Name.toLowerCase() === guildName.toLowerCase());
+
+    if (!exactMatch) {
+      return {
+        success: false,
+        error: 'GUILD_NOT_FOUND',
+        message: `Guild "${guildName}" not found in ${region} region.`
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        Id: exactMatch.Id,
+        Name: exactMatch.Name,
+        AllianceId: exactMatch.AllianceId || null,
+        AllianceName: exactMatch.AllianceName || null
+      }
+    };
+  } catch (error) {
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      return {
+        success: false,
+        error: 'API_TIMEOUT',
+        message: 'Albion API request timed out. Please try again.'
+      };
+    }
+
+    console.error('Albion API Error (fetchGuildInfo):', error);
+    return {
+      success: false,
+      error: 'API_ERROR',
+      message: 'Failed to fetch guild information from Albion API.'
+    };
+  }
+}
+
+/**
  * Validate if player is in the specified guild
  * @param {string} region - Region (americas, europe, asia)
  * @param {string} playerName - Player's in-game name
@@ -269,10 +326,14 @@ export async function validatePlayerGuild(region, playerName, expectedGuildName,
  * @param {string} region - Region (americas, europe, asia)
  * @param {string} playerName - Player's in-game name
  * @param {string} playerId - Optional Player ID for exact match
- * @param {string} expectedAllianceName - Required alliance name (case-insensitive). If omitted, any alliance passes.
+ * @param {string} expectedAllianceId - Required alliance ID. If omitted, any alliance passes.
+ *   Matched by ID rather than name - AllianceName is unreliably empty at the
+ *   guild-lookup level even when AllianceId is populated (verified against
+ *   the live API), while AllianceId is consistently present on both guilds
+ *   and players.
  * @returns {Promise<Object>} Validation result
  */
-export async function validatePlayerAlliance(region, playerName, playerId = null, expectedAllianceName = null) {
+export async function validatePlayerAlliance(region, playerName, playerId = null, expectedAllianceId = null) {
   let result;
 
   if (playerId) {
@@ -307,16 +368,13 @@ export async function validatePlayerAlliance(region, playerName, playerId = null
     };
   }
 
-  if (expectedAllianceName) {
-    const allianceMatches = (playerData.AllianceName || '').toLowerCase() === expectedAllianceName.toLowerCase();
-    if (!allianceMatches) {
-      return {
-        success: false,
-        error: 'ALLIANCE_MISMATCH',
-        message: `Player "${playerData.Name}" is in alliance "${playerData.AllianceName}", not "${expectedAllianceName}".`,
-        data: playerData
-      };
-    }
+  if (expectedAllianceId && playerData.AllianceId !== expectedAllianceId) {
+    return {
+      success: false,
+      error: 'ALLIANCE_MISMATCH',
+      message: `Player "${playerData.Name}" is in alliance "${playerData.AllianceName || playerData.AllianceId}", which is not allied with this server.`,
+      data: playerData
+    };
   }
 
   return {

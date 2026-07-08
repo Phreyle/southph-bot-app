@@ -87,7 +87,6 @@ export function loadAlbionConfig(guildId) {
     registerRoleId: null,
     guildTag: null,
     nicknameFormat: '{tag} {ign}',
-    allianceName: null,
     allianceRoleEnabled: true,
     allianceRoleIds: [],
     allianceRoleAutoCreate: false,
@@ -322,12 +321,6 @@ export function findAlbionUsersByIGN(guildId, ign) {
   );
 }
 
-/**
- * Get active registrations by type.
- */
-export function getAlbionRegistrationsByType(guildId, registerType) {
-  return getAllAlbionUsers(guildId, registerType, true);
-}
 
 /**
  * Check if configuration is complete
