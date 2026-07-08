@@ -5,13 +5,13 @@ import { DiscordRequest } from '../../utils.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser, clearAll, CURRENCY } from '../systems/bank/bank.js';
 import { loadPermissions, savePermissions } from '../database/guildData.js';
 import { hasPermissionSlash } from '../utils/permissions.js';
-import { buildHelpEmbed, buildPaginatedHelpEmbeds, buildHelpNavigationButtons } from '../utils/embedBuilder.js';
+import { buildHelpEmbed, buildPaginatedHelpEmbeds, buildHelpNavigationButtons, buildRegisteredListEmbeds } from '../utils/embedBuilder.js';
 import { contentState, pendingCreations } from '../config/contentState.js';
 import { buildContentEmbed, buildContentComponents, buildSizeSelector, autoAssignFillPlayers, getRoleDisplayName } from '../services/contentService.js';
 import { savePanels, loadPanels } from '../systems/ticket/ticket-db.js';
 import { getTicketStats, ticketSystemHealthCheck } from '../systems/ticket/ticket-utils.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
-import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN } from '../systems/albion/albion-db.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN, getAllAlbionUsers } from '../systems/albion/albion-db.js';
 
 export async function handleSlashCommands(req, res, client) {
   const { name } = req.body.data;
@@ -2233,6 +2233,39 @@ export async function handleSlashCommands(req, res, client) {
         content: '⚠️ Confirmation required. Use `/purge type:alliance confirm:true` for alliance cleanup.',
         flags: 64
       }
+    });
+  }
+
+  if (name === 'registered') {
+    console.log('📋 Executing /registered command');
+    const member = req.body.member;
+    const guildId = req.body.guild_id;
+    const options = req.body.data.options || [];
+    const filterType = (options.find(opt => opt.name === 'type')?.value || 'all').toLowerCase();
+
+    const isAdmin = member && member.permissions &&
+      (BigInt(member.permissions) & BigInt(PermissionFlagsBits.Administrator)) === BigInt(PermissionFlagsBits.Administrator);
+
+    if (!isAdmin) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ You need Administrator permission to use this command.',
+          flags: 64
+        },
+      });
+    }
+
+    const guildEntries = filterType === 'alliance' ? [] : getAllAlbionUsers(guildId, 'guild', true);
+    const allianceEntries = filterType === 'guild' ? [] : getAllAlbionUsers(guildId, 'alliance', true);
+    const embeds = buildRegisteredListEmbeds({ guild: guildEntries, alliance: allianceEntries });
+
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        embeds: embeds.map((e) => e.toJSON()),
+        flags: 64
+      },
     });
   }
 

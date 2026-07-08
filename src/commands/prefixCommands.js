@@ -2,7 +2,7 @@ import { EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { loadPrefix, savePrefix, loadPermissions, savePermissions } from '../database/guildData.js';
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser, clearAll, CURRENCY } from '../systems/bank/bank.js';
 import { hasPermission } from '../utils/permissions.js';
-import { buildHelpEmbed } from '../utils/embedBuilder.js';
+import { buildHelpEmbed, buildRegisteredListEmbeds } from '../utils/embedBuilder.js';
 import {
   setupTicketPanel,
   listTicketPanels,
@@ -13,7 +13,7 @@ import {
 import { createApplyPanelMessage } from '../systems/ticket/ticket-system.js';
 import { resetTicketData } from '../systems/ticket/ticket-db.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
-import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN } from '../systems/albion/albion-db.js';
+import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN, getAllAlbionUsers } from '../systems/albion/albion-db.js';
 import axios from 'axios';
 
 // Sends the apply button in the current channel (!ticket panel / !applypanel)
@@ -1195,7 +1195,28 @@ export async function handlePrefixCommands(message, command, args, prefix) {
       console.error('Error in !purge command:', error);
       await loadingMsg.edit('❌ An unexpected error occurred during purge.');
     }
-    
+
+    return;
+  }
+
+  // !registered command - List members registered with their Albion IGN (Admin only)
+  if (command === 'registered') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      await message.reply('❌ You need Administrator permission to use this command.');
+      return;
+    }
+
+    const filterType = args[0]?.toLowerCase() || 'all';
+    if (!['all', 'guild', 'alliance'].includes(filterType)) {
+      await message.reply(`❌ Usage: \`${prefix}registered [all|guild|alliance]\``);
+      return;
+    }
+
+    const guildEntries = filterType === 'alliance' ? [] : getAllAlbionUsers(message.guild.id, 'guild', true);
+    const allianceEntries = filterType === 'guild' ? [] : getAllAlbionUsers(message.guild.id, 'alliance', true);
+    const embeds = buildRegisteredListEmbeds({ guild: guildEntries, alliance: allianceEntries });
+
+    await message.reply({ embeds });
     return;
   }
 }

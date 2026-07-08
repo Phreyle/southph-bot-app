@@ -304,3 +304,91 @@ export function buildHelpNavigationButtons(currentPage, totalPages) {
   return row;
 }
 
+// Splits pre-formatted lines into chunks that each fit inside a single embed
+// field value (Discord's limit is 1024 chars - stay well under it).
+function chunkLines(lines, maxChars = 1000) {
+  const chunks = [];
+  let current = [];
+  let currentLen = 0;
+
+  for (const line of lines) {
+    const lineLen = line.length + 1; // +1 for the joining newline
+    if (current.length > 0 && currentLen + lineLen > maxChars) {
+      chunks.push(current.join('\n'));
+      current = [];
+      currentLen = 0;
+    }
+    current.push(line);
+    currentLen += lineLen;
+  }
+  if (current.length > 0) chunks.push(current.join('\n'));
+
+  return chunks;
+}
+
+// Builds one or more embeds listing registered guild/alliance members
+// (Discord ID <-> Albion IGN), safely chunked to respect Discord's per-field
+// (1024 char), per-embed (25 field), and per-message (10 embed) limits.
+export function buildRegisteredListEmbeds({ guild = [], alliance = [] }) {
+  const embeds = [];
+  let fields = [];
+  let approxChars = 0; // running total for the current, not-yet-flushed embed
+
+  const MAX_EMBED_CHARS = 5500; // Discord's real limit is 6000 (title+fields+footer) - leave margin
+
+  const flushEmbed = () => {
+    if (fields.length === 0) return;
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle(embeds.length === 0 ? '📋 Registered Members' : '📋 Registered Members (cont.)')
+        .addFields(fields)
+        .setTimestamp()
+    );
+    fields = [];
+    approxChars = 0;
+  };
+
+  const addSection = (label, entries, formatLine) => {
+    if (entries.length === 0) return;
+    const lines = entries.map(formatLine);
+    const chunks = chunkLines(lines);
+    chunks.forEach((chunk, i) => {
+      const fieldName = chunks.length > 1 ? `${label} (part ${i + 1}/${chunks.length})` : label;
+      const fieldSize = fieldName.length + chunk.length;
+      if (fields.length >= 24 || approxChars + fieldSize > MAX_EMBED_CHARS) {
+        flushEmbed();
+      }
+      fields.push({ name: fieldName, value: chunk, inline: false });
+      approxChars += fieldSize;
+    });
+  };
+
+  addSection(
+    `🛡️ Guild (${guild.length})`,
+    guild,
+    (e, i) => `${i + 1}. <@${e.discordId}> — **${e.ign}**${e.region ? ` (${e.region.toUpperCase()})` : ''}`
+  );
+  addSection(
+    `🤝 Alliance (${alliance.length})`,
+    alliance,
+    (e, i) => `${i + 1}. <@${e.discordId}> — **${e.ign}**`
+  );
+
+  flushEmbed();
+
+  if (embeds.length === 0) {
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('📋 Registered Members')
+        .setDescription('No members are currently registered.')
+        .setTimestamp()
+    );
+  }
+
+  embeds[embeds.length - 1].setFooter({ text: `Guild: ${guild.length} | Alliance: ${alliance.length}` });
+
+  return embeds.slice(0, 10); // Discord allows at most 10 embeds per message
+}
+

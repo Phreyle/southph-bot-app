@@ -570,6 +570,29 @@ const PURGE_COMMAND = {
   contexts: [0]
 };
 
+// Albion registered members list command (Admin only)
+const REGISTERED_COMMAND = {
+  name: 'registered',
+  description: 'List members registered with their Albion in-game name (Admin only)',
+  options: [
+    {
+      type: 3, // STRING
+      name: 'type',
+      description: 'Filter by registration type (default: all)',
+      required: false,
+      choices: [
+        { name: 'All', value: 'all' },
+        { name: 'Alliance', value: 'alliance' },
+        { name: 'Guild', value: 'guild' }
+      ]
+    }
+  ],
+  default_member_permissions: '8', // Administrator only
+  type: 1,
+  integration_types: [0],
+  contexts: [0]
+};
+
 // Ticket management command (Admin only)
 const TICKET_COMMAND = {
   name: 'ticket',
@@ -685,6 +708,6 @@ const TICKET_COMMAND = {
   contexts: [0],
 };
 
-const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND, SET_COMMAND, CONFIG_COMMAND, REGISTER_COMMAND, UNREGISTER_COMMAND, FORCEUNREGISTER_COMMAND, PURGE_COMMAND, TICKET_COMMAND];
+const ALL_COMMANDS = [UTC_COMMAND, INFO_COMMAND, HELP_COMMAND, CONTENT_COMMAND, REGEAR_COMMAND, BANK_COMMAND, PERMS_COMMAND, SET_COMMAND, CONFIG_COMMAND, REGISTER_COMMAND, UNREGISTER_COMMAND, FORCEUNREGISTER_COMMAND, PURGE_COMMAND, REGISTERED_COMMAND, TICKET_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);

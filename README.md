@@ -147,6 +147,7 @@ All writes go through a temp-file-then-rename pattern (`src/utils/atomicFile.js`
 | `/forceunregister <ign>` | Force-unregister a member by IGN |
 | `/purge type:guild confirm:true` | Remove members no longer in the guild |
 | `/purge type:alliance confirm:true` | Remove all alliance registrations + roles |
+| `/registered [type:all\|guild\|alliance]` (or `!registered [all\|guild\|alliance]`) | List every registered member with their linked Albion IGN, grouped by type |
 
 If an alliance tag is missing, alliance name is used instead; if both are missing, the nickname falls back to player name only.
 
