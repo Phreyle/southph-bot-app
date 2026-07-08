@@ -1221,9 +1221,20 @@ export async function handleSlashCommands(req, res, client) {
 
     // Subcommand: reset
     if (subcommand === 'reset') {
+      const confirmed = req.body.data.options[0].options?.find(o => o.name === 'confirm')?.value === true;
+      if (!confirmed) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: '⚠️ Set `confirm:true` to execute the reset. This deletes all tickets and transcripts for this server.',
+            flags: 64
+          },
+        });
+      }
+
       try {
         const { resetTicketData } = await import('../systems/ticket/ticket-db.js');
-        
+
         // Reset all ticket data
         await resetTicketData(guildId);
 

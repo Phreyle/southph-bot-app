@@ -3,17 +3,68 @@ import { loadPrefix, savePrefix, loadPermissions, savePermissions } from '../dat
 import { deposit, withdraw, getBalance, getActiveUsers, clearUser, clearAll, CURRENCY } from '../systems/bank/bank.js';
 import { hasPermission } from '../utils/permissions.js';
 import { buildHelpEmbed } from '../utils/embedBuilder.js';
-import { 
-  setupTicketPanel, 
-  listTicketPanels, 
+import {
+  setupTicketPanel,
+  listTicketPanels,
   deleteTicketPanel,
   getTicketStatsCommand,
-  ticketHealthCommand 
+  ticketHealthCommand
 } from '../systems/ticket/ticket-commands.js';
 import { createApplyPanelMessage } from '../systems/ticket/ticket-system.js';
+import { resetTicketData } from '../systems/ticket/ticket-db.js';
 import { registerUser, unregisterUser, purgeUsers } from '../systems/albion/albion.js';
 import { loadAlbionConfig, saveAlbionConfig, validateAlbionConfig, findAlbionUsersByIGN } from '../systems/albion/albion-db.js';
 import axios from 'axios';
+
+// Sends the apply button in the current channel (!ticket panel / !applypanel)
+async function sendApplyPanel(message) {
+  if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    await message.reply('❌ You need Administrator permission to use this command.');
+    return;
+  }
+
+  const panelMessage = createApplyPanelMessage();
+  await message.channel.send(panelMessage);
+  await message.reply('✅ Apply panel created!');
+}
+
+// Wipes all ticket data for the guild (!ticket reset), gated behind an
+// explicit "confirm" argument like !purge - this is irreversible.
+async function resetTicketDataCommand(message, args, prefix) {
+  if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    await message.reply('❌ You need Administrator permission to use this command.');
+    return;
+  }
+
+  if (args[0]?.toLowerCase() !== 'confirm') {
+    await message.reply(
+      `⚠️ **WARNING:** This deletes all tickets, transcripts, and resets the ticket counter for this server.\n\n` +
+      `To proceed, use: \`${prefix}ticket reset confirm\``
+    );
+    return;
+  }
+
+  try {
+    await resetTicketData(message.guildId);
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Ticket System Reset')
+      .setDescription(
+        'All ticket data has been cleared:\n' +
+        '• All tickets deleted\n' +
+        '• All transcripts deleted\n' +
+        '• Ticket counter reset to 0\n\n' +
+        'Next ticket will be **ticket-1**'
+      )
+      .setColor(0x57F287)
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error resetting ticket data:', error);
+    await message.reply('❌ Failed to reset ticket data.');
+  }
+}
 
 export async function handlePrefixCommands(message, command, args, prefix) {
   // !utc command
@@ -480,47 +531,72 @@ export async function handlePrefixCommands(message, command, args, prefix) {
   }
 
   // ==================== TICKET COMMANDS ====================
-  
-  // !ticketsetup command
+  // Primary form mirrors the slash command 1:1: /ticket setup <-> !ticket setup,
+  // /ticket list <-> !ticket list, etc. The old flat names (!ticketsetup,
+  // !ticketpanels, !applypanel, ...) still work below as aliases.
+
+  if (command === 'ticket') {
+    const ticketSubcommand = args[0]?.toLowerCase();
+    const ticketArgs = args.slice(1);
+
+    if (ticketSubcommand === 'setup') {
+      await setupTicketPanel(message, ticketArgs);
+      return;
+    }
+    if (ticketSubcommand === 'list') {
+      await listTicketPanels(message);
+      return;
+    }
+    if (ticketSubcommand === 'delete') {
+      await deleteTicketPanel(message, ticketArgs);
+      return;
+    }
+    if (ticketSubcommand === 'stats') {
+      await getTicketStatsCommand(message);
+      return;
+    }
+    if (ticketSubcommand === 'health') {
+      await ticketHealthCommand(message);
+      return;
+    }
+    if (ticketSubcommand === 'panel') {
+      await sendApplyPanel(message);
+      return;
+    }
+    if (ticketSubcommand === 'reset') {
+      await resetTicketDataCommand(message, ticketArgs, prefix);
+      return;
+    }
+
+    await message.reply(
+      `❌ Usage: \`${prefix}ticket <setup|list|delete|stats|health|panel|reset>\``
+    );
+    return;
+  }
+
+  // Legacy aliases (still supported for backwards compatibility)
   if (command === 'ticketsetup') {
     await setupTicketPanel(message, args);
     return;
   }
-
-  // !ticketpanels command
   if (command === 'ticketpanels') {
     await listTicketPanels(message);
     return;
   }
-
-  // !ticketdelete command
   if (command === 'ticketdelete') {
     await deleteTicketPanel(message, args);
     return;
   }
-
-  // !ticketstats command
   if (command === 'ticketstats') {
     await getTicketStatsCommand(message);
     return;
   }
-
-  // !tickethealth command
   if (command === 'tickethealth') {
     await ticketHealthCommand(message);
     return;
   }
-
-  // !applypanel command - sends the apply button in the current channel
   if (command === 'applypanel') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      await message.reply('❌ You need Administrator permission to use this command.');
-      return;
-    }
-    
-    const panelMessage = createApplyPanelMessage();
-    await message.channel.send(panelMessage);
-    await message.reply('✅ Apply panel created!');
+    await sendApplyPanel(message);
     return;
   }
 

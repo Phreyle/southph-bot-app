@@ -179,16 +179,23 @@ Content types: **ROA** (Roads of Avalon, 7 roles + fill), **CTA** (tank/heal/dps
 
 **Ticket system**
 
+The prefix form mirrors the slash form 1:1 - `/ticket <subcommand>` <-> `!ticket <subcommand>`:
+
 | Command | Slash | Prefix |
 |---|---|---|
-| Configure a panel | `/ticket setup` | `!ticketsetup <panelId> "<name>" <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> ["<nicknameFormat>"]` |
-| List panels | `/ticket list` | `!ticketpanels` |
-| Post the apply button | `/ticket panel [id]` | `!applypanel` |
-| Delete a panel | `/ticket delete <id>` | `!ticketdelete <panelId>` |
-| View statistics | `/ticket stats` | `!ticketstats` |
-| Health check | `/ticket health` | `!tickethealth` |
+| Configure a panel | `/ticket setup` | `!ticket setup <panelId> "<name>" <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> ["<nicknameFormat>"]` |
+| List panels | `/ticket list` | `!ticket list` |
+| Post the apply button | `/ticket panel [id]` | `!ticket panel` |
+| Delete a panel | `/ticket delete <id>` | `!ticket delete <panelId>` |
+| View statistics | `/ticket stats` | `!ticket stats` |
+| Health check | `/ticket health` | `!ticket health` |
+| Reset all ticket data | `/ticket reset confirm:true` | `!ticket reset confirm` |
 
-Example panel setup: `!ticketsetup apply "Apply" 123456789012345678 987654321098765432 111111111111111111,222222222222222222 333333333333333333 444444444444444444 "SOUTH | {username}"` (staff role IDs are comma-separated, no spaces).
+The old flat command names (`!ticketsetup`, `!ticketpanels`, `!ticketdelete`, `!ticketstats`, `!tickethealth`, `!applypanel`) still work as aliases.
+
+Example panel setup: `!ticket setup apply "Apply" 123456789012345678 987654321098765432 111111111111111111,222222222222222222 333333333333333333 444444444444444444 "SOUTH | {username}"` (staff role IDs are comma-separated, no spaces; quoted values may contain spaces).
+
+`/ticket reset` / `!ticket reset` **permanently deletes all tickets and transcripts for the server** - both now require explicit confirmation (`confirm:true` / `confirm`), matching `/purge`'s pattern.
 
 Ticket lifecycle: **open** → **claimed** (staff clicked Claim) → **approved** (role + nickname applied) or **closed** (no approval). Data is isolated per guild under `guilds/{guildId}/` - see [Data & Storage](#data--storage).
 

@@ -5,6 +5,20 @@ import { DiscordRequest } from '../../utils.js';
 import { handleTicketMessage } from '../systems/ticket/ticket-system.js';
 import { handlePrefixCommands } from '../commands/prefixCommands.js';
 
+// Splits prefix-command text on whitespace, treating a "double quoted phrase"
+// as one token (e.g. `!ticketsetup apply "Apply" ... "SOUTH | {username}"`).
+// A plain split(/\s+/) would break the quoted nickname format above into
+// three separate args at each internal space.
+function tokenizeArgs(str) {
+  const tokens = [];
+  const pattern = /"([^"]*)"|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(str)) !== null) {
+    tokens.push(match[1] !== undefined ? match[1] : match[2]);
+  }
+  return tokens;
+}
+
 export async function handleMessageCreate(message, client) {
   // Ignore bot messages
   if (message.author.bot) return;
@@ -121,8 +135,8 @@ export async function handleMessageCreate(message, client) {
     return;
   }
 
-  const args = message.content.slice(prefix.length).trim().split(/\s+/);
-  const command = args.shift().toLowerCase();
+  const args = tokenizeArgs(message.content.slice(prefix.length).trim());
+  const command = (args.shift() || '').toLowerCase();
 
   console.log(`📝 Text command received: ${prefix}${command}`);
 

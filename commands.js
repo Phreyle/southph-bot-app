@@ -670,6 +670,14 @@ const TICKET_COMMAND = {
       type: 1, // SUB_COMMAND
       name: 'reset',
       description: 'Reset all ticket data and counter (WARNING: Deletes all ticket history!)',
+      options: [
+        {
+          type: 5, // BOOLEAN
+          name: 'confirm',
+          description: 'Set to true to execute the reset',
+          required: true
+        }
+      ],
     },
   ],
   type: 1,
