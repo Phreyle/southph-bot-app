@@ -281,7 +281,15 @@ export async function registerUser(guild, discordId, region, ign, playerId = nul
   let validation;
 
   if (normalizedType === 'alliance') {
-    validation = await validatePlayerAlliance(region, ign, playerId);
+    if (!config.allianceName) {
+      return {
+        success: false,
+        error: 'INCOMPLETE_CONFIG',
+        message: 'Alliance registration is not configured yet. An administrator must run /set alliance-name first.'
+      };
+    }
+
+    validation = await validatePlayerAlliance(region, ign, playerId, config.allianceName);
   } else {
     const configValidation = validateAlbionConfig(config);
     if (!configValidation.valid) {

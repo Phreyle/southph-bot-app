@@ -139,6 +139,7 @@ All writes go through a temp-file-then-rename pattern (`src/utils/atomicFile.js`
 | `/set register-role @role` | Role given to verified members |
 | `/set guild-tag <tag>` | Guild tag used in nicknames |
 | `/set nickname-format <format>` | Nickname template (`{ign}`, `{tag}`, `{guild}`, `{region}`) |
+| `/set alliance-name <name>` | **Required** - the alliance members must belong to for `type:alliance` registration to succeed (e.g. "Viltrum Empire"). Until this is set, alliance registration is blocked entirely - it does not fall back to "any alliance." |
 | `/set alliance-role @role` | Alliance registration role |
 | `/set alliance-role-enabled <true\|false>` | Toggle alliance role assignment |
 | `/set alliance-nickname-format <format>` | Alliance nickname template (`{allianceTag}`, `{allianceName}`, `{playerName}`) |

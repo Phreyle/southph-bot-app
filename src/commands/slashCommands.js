@@ -1586,6 +1586,28 @@ export async function handleSlashCommands(req, res, client) {
       });
     }
 
+    // Subcommand: alliance-name
+    if (subcommand === 'alliance-name') {
+      const allianceName = req.body.data.options[0].options[0].value;
+
+      config.allianceName = allianceName;
+      saveAlbionConfig(guildId, config);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Alliance Name Updated')
+        .setDescription(`\`type:alliance\` registrations must now belong to alliance: **${allianceName}**`)
+        .setTimestamp();
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [embed.toJSON()],
+          flags: 64
+        },
+      });
+    }
+
     // Subcommand: alliance-role
     if (subcommand === 'alliance-role') {
       const roleId = req.body.data.options[0].options[0].value;
@@ -1715,6 +1737,7 @@ export async function handleSlashCommands(req, res, client) {
           { name: 'Register Role', value: config.registerRoleId ? `<@&${config.registerRoleId}>` : '*Not set*', inline: true },
           { name: 'Guild Tag', value: config.guildTag || '*Not set*', inline: true },
           { name: 'Nickname Format', value: config.nicknameFormat || '*Default*', inline: false },
+          { name: 'Required Alliance', value: config.allianceName || '*Not set (alliance registration blocked)*', inline: true },
           { name: 'Alliance Role Assignment', value: config.allianceRoleEnabled ? 'Enabled' : 'Disabled', inline: true },
           { name: 'Alliance Role(s)', value: (config.allianceRoleIds || []).length > 0 ? config.allianceRoleIds.map(id => `<@&${id}>`).join(', ') : '*Not set*', inline: false },
           { name: 'Alliance Nickname Updates', value: config.allianceNicknameEnabled ? 'Enabled' : 'Disabled', inline: true },
@@ -1853,6 +1876,8 @@ export async function handleSlashCommands(req, res, client) {
           errorMessage = `❌ Player **${playerName}** is not in any guild.\n\nYou must join the guild in-game first, then register.`;
         } else if (result.error === 'GUILD_MISMATCH') {
           errorMessage = `❌ ${result.message}\n\nYou must be in the correct guild to register.`;
+        } else if (result.error === 'ALLIANCE_MISMATCH') {
+          errorMessage = `❌ ${result.message}\n\nYou must be in our allied alliance to register as Alliance.`;
         } else if (result.error === 'INCOMPLETE_CONFIG') {
           errorMessage = `❌ ${result.message}`;
         }

@@ -269,9 +269,10 @@ export async function validatePlayerGuild(region, playerName, expectedGuildName,
  * @param {string} region - Region (americas, europe, asia)
  * @param {string} playerName - Player's in-game name
  * @param {string} playerId - Optional Player ID for exact match
+ * @param {string} expectedAllianceName - Required alliance name (case-insensitive). If omitted, any alliance passes.
  * @returns {Promise<Object>} Validation result
  */
-export async function validatePlayerAlliance(region, playerName, playerId = null) {
+export async function validatePlayerAlliance(region, playerName, playerId = null, expectedAllianceName = null) {
   let result;
 
   if (playerId) {
@@ -304,6 +305,18 @@ export async function validatePlayerAlliance(region, playerName, playerId = null
       message: `Player "${playerData.Name}" is not in any alliance.`,
       data: playerData
     };
+  }
+
+  if (expectedAllianceName) {
+    const allianceMatches = (playerData.AllianceName || '').toLowerCase() === expectedAllianceName.toLowerCase();
+    if (!allianceMatches) {
+      return {
+        success: false,
+        error: 'ALLIANCE_MISMATCH',
+        message: `Player "${playerData.Name}" is in alliance "${playerData.AllianceName}", not "${expectedAllianceName}".`,
+        data: playerData
+      };
+    }
   }
 
   return {

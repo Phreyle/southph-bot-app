@@ -87,6 +87,7 @@ export function loadAlbionConfig(guildId) {
     registerRoleId: null,
     guildTag: null,
     nicknameFormat: '{tag} {ign}',
+    allianceName: null,
     allianceRoleEnabled: true,
     allianceRoleIds: [],
     allianceRoleAutoCreate: false,
