@@ -5,7 +5,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import { InteractionType, InteractionResponseType, verifyKeyMiddleware } from 'discord-interactions';
 import { DATA_DIR, PORT } from './src/config/constants.js';
 import { handleMessageCreate } from './src/events/messageCreate.js';
-import { handleInteractionCreate, handleButtonInteractions, handleModalSubmit } from './src/events/interactionCreate.js';
+import { handleButtonInteractions, handleModalSubmit } from './src/events/interactionCreate.js';
 import { handleSlashCommands } from './src/commands/slashCommands.js';
 
 // Ensure data directory exists
@@ -16,8 +16,11 @@ if (!fs.existsSync(DATA_DIR)) {
 // Create an express app
 const app = express();
 
-// Create a Discord client
-const client = new Client({ 
+// Gateway client: only used for messageCreate (prefix commands) and member/guild
+// cache. Slash commands, buttons, and modals arrive via the /interactions
+// webhook below instead - Discord stops sending those over the gateway once
+// an Interactions Endpoint URL is configured for the app.
+const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
@@ -39,11 +42,6 @@ client.once('ready', () => {
 // Message create event handler
 client.on('messageCreate', async (message) => {
   await handleMessageCreate(message, client);
-});
-
-// Interaction create event handler (Gateway button interactions)
-client.on('interactionCreate', async (interaction) => {
-  await handleInteractionCreate(interaction);
 });
 
 // Login to Discord
