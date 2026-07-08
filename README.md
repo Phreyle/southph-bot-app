@@ -1,217 +1,230 @@
 # SouthPH Bot - Albion Online Discord Bot
 
-A Discord bot for Albion Online guilds featuring automatic guild verification, content management, ticket systems, and virtual economy.
+A Discord bot for Albion Online guilds featuring automatic guild/alliance verification, a virtual bank economy, content (group activity) callouts, regear threads, and an application ticket system.
 
 ---
 
-## 🌟 Features
+## Features
 
-- **🎮 Guild Verification** - Automatically verify members are in your Albion guild
-- **🤝 Alliance Registration** - Register alliance members with configurable roles and nicknames
-- **💰 Virtual Bank** - Track virtual currency for guild activities
-- **🎯 Content Management** - Organize group content with role signups
-- **🎫 Ticket System** - Application and support tickets
-- **⚔️ Regear Threads** - Manage regear requests for CTA/FF
+- **Guild Verification** - Automatically verify members are in your Albion guild
+- **Alliance Registration** - Register alliance members with configurable roles and nicknames
+- **Virtual Bank** - Track virtual currency for guild activities
+- **Content Management** - Organize group content with role signups
+- **Ticket System** - Application and support tickets
+- **Regear Threads** - Manage regear requests for CTA/FF
 
 ---
 
-## 📖 Getting Started
+## Setup
 
-### For Members
+### Prerequisites
+
+- Node.js 18+
+- A Discord application + bot ([Discord Developer Portal](https://discord.com/developers/applications))
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Configure environment variables
+
+Copy `.env.Example` to `.env` and fill in real values - **never commit `.env`** (it's gitignored):
+
+| Variable | Required | Description |
+|---|---|---|
+| `APP_ID` | Yes | Your Discord application ID |
+| `DISCORD_TOKEN` | Yes | Your bot's token (Bot tab in the Developer Portal) |
+| `PUBLIC_KEY` | Yes | Your application's public key, used to verify incoming interaction requests |
+| `DATA_DIR` | No | Where per-guild JSON data is stored. Defaults to `/home/container/data` (matches the Pelican egg layout). Set this to a local path (e.g. `./data`) for local development |
+| `PORT` | No | Port the Express server listens on for the `/interactions` webhook. Defaults to `3000` |
+
+### 3. Register slash commands
+
+```bash
+npm run register
+```
+
+Run this again any time you add or change a slash command definition in `commands.js`. It can take a few minutes for Discord to propagate command changes.
+
+### 4. Configure the Interactions Endpoint URL
+
+This bot receives slash commands, buttons, and modals over an **HTTP webhook**, not the Discord gateway. In the Developer Portal, under your application's **General Information**, set **Interactions Endpoint URL** to:
+
+```
+https://<your-public-host>/interactions
+```
+
+Discord will only deliver interactions to whichever transport is configured here - if this is set, the gateway will not also receive them. The bot still keeps a gateway connection open (`app.js`), but only for `messageCreate` (prefix commands) and the member/guild cache.
+
+### 5. Run the bot
+
+```bash
+npm start        # production
+npm run dev      # local dev, auto-restarts on change (nodemon)
+```
+
+### Docker / Pelican deployment
+
+`Dockerfile.pelican` is the image actually built and pushed by CI (`.github/workflows/docker-image.yml`, tagged `pelican-latest` on Docker Hub) - it follows Pelican's `container` user + `tini` conventions and expects the app's persistent data volume mounted at whatever `DATA_DIR` resolves to (defaults to `/home/container/data`).
+
+Pushing to `main` only builds and publishes a new image - it does **not** auto-restart the running Pelican server. Pull the new image and restart the container manually (or via Pelican's own auto-update settings) to actually deploy a change.
+
+### Required bot permissions
+
+- View Channels
+- Send Messages
+- Embed Links
+- Manage Channels (ticket system creates/deletes channels)
+- Manage Roles (Albion registration, ticket approval)
+- Manage Nicknames (Albion registration, ticket approval)
+- Create Threads / Manage Threads (content callouts, regear)
+- Read Message History
+
+---
+
+## Data & Storage
+
+There is no database - all persistence is flat JSON files under `DATA_DIR`, one set per guild:
+
+| File | Owner | Purpose |
+|---|---|---|
+| `prefix-config-{guildId}.json` | `src/database/guildData.js` | Custom command prefix (default `!`) |
+| `permissions-config-{guildId}.json` | `src/database/guildData.js` | Role lists allowed to manage bank/CTA/content |
+| `albion-config-{guildId}.json` | `src/systems/albion/albion-db.js` | Guild/region/role/nickname-format configuration |
+| `albion-users-{guildId}.json` | `src/systems/albion/albion-db.js` | Registered members |
+| `bank-data-{guildId}.json` | `src/systems/bank/bank.js` | Virtual currency balances |
+| `guilds/{guildId}/{tickets,transcripts,panels,meta}.json` | `src/systems/ticket/ticket-db.js` | Ticket system state |
+
+All writes go through a temp-file-then-rename pattern (`src/utils/atomicFile.js`, and `ticket-db.js`'s own async version), so a crash or forced restart mid-write can't leave one of these files truncated. **Back these files up regularly** - they're the only copy of guild configuration, balances, and ticket history.
+
+---
+
+## Commands Reference
+
+### Getting Started (Members)
 
 1. **Register your character:**
    ```
    /register region:asia type:alliance name:YourCharacterName
    ```
-   This verifies your alliance membership and applies configured alliance role/nickname settings.
+2. **Sign up for content** - in a content thread, type `x tank` (or your role), `x fill`, or `x cancel`.
+3. **Check your bank balance:** `/bank balance`
 
-2. **Sign up for content:**
-   - When content is posted, go to the thread
-   - Type `x tank` (or your role) to sign up
-   - Type `x fill` to sign up as any role
-   - Type `x cancel` to remove yourself
+### User Commands
 
-3. **Check your bank balance:**
-   ```
-   /bank balance
-   ```
-
----
-
-## 👤 User Commands
-
-### General Commands
 | Command | Description |
-|---------|-------------|
+|---|---|
 | `/help` | Show all available commands |
 | `/utc` | Display current UTC time (Albion game time) |
 | `/info <playername>` | Search for any Albion player |
-
-### Albion Verification
-| Command | Description |
-|---------|-------------|
-| `/register region:<region> type:<alliance\|guild\|player> name:<ign>` | Register your character (alliance or guild verification) |
-| `/unregister` | Unregister your character from the system |
+| `/register region:<region> type:<alliance\|guild\|player> name:<ign>` | Register your character |
+| `/unregister` | Unregister your character |
 | `/config view` | View guild verification settings |
-
-**Regions:** `americas`, `europe`, `asia`
-
-**Alliance Registration Example:**
-- `/register region:asia type:alliance name:LeiExample`
-
-### Bank Commands
-| Command | Description |
-|---------|-------------|
 | `/bank balance [@user]` | Check your balance or another user's |
 | `/bank active` | See all members with bank balances |
 
-### Content Threads
-When admins post content, interact in the thread using:
-- `x <role>` - Sign up for a specific role (e.g., `x tank`, `x heal`, `x dps`)
-- `x fill` - Sign up to fill any available slot
-- `x cancel` - Remove yourself from the content
+**Regions:** `americas`, `europe`, `asia`
 
----
+**Content threads:** `x <role>` to sign up for a role, `x fill` for any open slot, `x cancel` to leave.
 
-## 🛡️ Admin Commands
+### Admin Commands
 
-### Albion Verification Management
+**Albion verification**
+
 | Command | Description |
-|---------|-------------|
-| `/set guild <region> <name>` | Configure your guild and region |
-| `/set register-role @role` | Set the role given to verified members |
-| `/set guild-tag <tag>` | Set guild tag for nicknames (e.g., SOUTH) |
-| `/set nickname-format <format>` | Set nickname format |
-| `/set alliance-role @role` | Set alliance registration role |
-| `/set alliance-role-enabled <true\|false>` | Enable/disable alliance role assignment |
-| `/set alliance-nickname-format <format>` | Set alliance nickname format |
-| `/set alliance-nickname-enabled <true\|false>` | Enable/disable alliance nickname updates |
-| `/set alliance-nickname-overwrite <true\|false>` | Overwrite existing nicknames on re-register |
-| `/forceunregister <ign>` | Force unregister a member by in-game name |
+|---|---|
+| `/set guild <region> <name>` | Configure guild and region |
+| `/set register-role @role` | Role given to verified members |
+| `/set guild-tag <tag>` | Guild tag used in nicknames |
+| `/set nickname-format <format>` | Nickname template (`{ign}`, `{tag}`, `{guild}`, `{region}`) |
+| `/set alliance-role @role` | Alliance registration role |
+| `/set alliance-role-enabled <true\|false>` | Toggle alliance role assignment |
+| `/set alliance-nickname-format <format>` | Alliance nickname template (`{allianceTag}`, `{allianceName}`, `{playerName}`) |
+| `/set alliance-nickname-enabled <true\|false>` | Toggle alliance nickname updates |
+| `/set alliance-nickname-overwrite <true\|false>` | Overwrite existing nickname on re-register |
+| `/forceunregister <ign>` | Force-unregister a member by IGN |
 | `/purge type:guild confirm:true` | Remove members no longer in the guild |
-| `/purge type:alliance confirm:true` | Remove all alliance registrations and configured alliance roles |
+| `/purge type:alliance confirm:true` | Remove all alliance registrations + roles |
 
-**Nickname Format Variables:**
-- `{ign}` - In-game name
-- `{tag}` - Guild tag
-- `{guild}` - Guild name
-- `{region}` - Region (uppercase)
+If an alliance tag is missing, alliance name is used instead; if both are missing, the nickname falls back to player name only.
 
-**Examples:**
-- `{tag} {ign}` → "SOUTH PlayerName"
-- `{ign} | {guild}` → "PlayerName | YourGuild"
+**Bank**
 
-**Alliance Nickname Variables:**
-- `{allianceTag}` - Albion alliance tag
-- `{allianceName}` - Albion alliance name
-- `{playerName}` - Albion player name
-
-**Alliance Nickname Format Example:**
-- `[{allianceTag}] | {playerName}`
-
-Fallback behavior:
-- If alliance tag is missing, alliance name is used.
-- If both are missing, nickname falls back to player name only.
-
-### Bank Management
 | Command | Description |
-|---------|-------------|
+|---|---|
 | `/bank deposit @user <amount>` | Add money to a user's account |
 | `/bank withdraw @user <amount>` | Remove money from a user's account |
 | `/bank clear @user` | Clear a specific user's balance |
 | `/bank clearall` | Clear all balances (use with caution) |
 
-### Content Management
-| Command | Description |
-|---------|-------------|
-| `/content create` | Create content callout (ROA/CTA/GCAMPS/FF/Tracking/Avadungeon) |
-| `/content reset` | Reset content system for new callout |
-| `/content adduser @user [role]` | Manually add user to a role slot |
-| `/content removeuser [role]` | Remove user from a role slot |
+**Content**
 
-**Content Types:**
-- **ROA** - Roads of Avalon (7 fixed roles + fill)
-- **CTA** - Crystal Territory Attack (tank/heal/dps/support/dtank)
-- **GCAMPS** - Group Camps (5 fixed roles + fill)
-- **FF** - Faction Warfare (tank/heal/dps)
-- **Tracking** - Crystal League (5 fixed roles + fill)
-- **Avadungeon** - Avalonian Dungeon (10 fixed roles + fill)
-
-### Regear Management
 | Command | Description |
-|---------|-------------|
-| `/regear create <type> <title> <time>` | Create regear thread (CTA or FF) |
+|---|---|
+| `/content create` | Create a content callout (ROA/CTA/GCAMPS/FF/Tracking/Avadungeon) |
+| `/content reset` | Reset content system for a new callout |
+| `/content adduser @user [role]` | Manually add a user to a role slot |
+| `/content removeuser [role]` | Remove a user from a role slot |
+
+Content types: **ROA** (Roads of Avalon, 7 roles + fill), **CTA** (tank/heal/dps/support/dtank), **GCAMPS** (5 roles + fill), **FF** (tank/heal/dps), **Tracking** (5 roles + fill), **Avadungeon** (10 roles + fill).
+
+**Regear**
+
+| Command | Description |
+|---|---|
+| `/regear create <type> <title> <time>` | Create a regear thread (CTA or FF) |
 | `/regear close` | Close and lock the regear thread |
 
-### Ticket System
-| Command | Description |
-|---------|-------------|
-| `/ticket setup` | Create a new ticket panel |
-| `/ticket list` | List all ticket panels |
-| `/ticket panel [id]` | Send ticket button to channel |
-| `/ticket delete <id>` | Delete a ticket panel |
-| `/ticket stats` | View ticket statistics |
-| `/ticket health` | Run system health check |
+**Ticket system**
 
-### Permissions
+| Command | Slash | Prefix |
+|---|---|---|
+| Configure a panel | `/ticket setup` | `!ticketsetup <panelId> "<name>" <categoryId> <pingRoleId> <staffRoleIds> <approveRoleId> <transcriptChannelId> ["<nicknameFormat>"]` |
+| List panels | `/ticket list` | `!ticketpanels` |
+| Post the apply button | `/ticket panel [id]` | `!applypanel` |
+| Delete a panel | `/ticket delete <id>` | `!ticketdelete <panelId>` |
+| View statistics | `/ticket stats` | `!ticketstats` |
+| Health check | `/ticket health` | `!tickethealth` |
+
+Example panel setup: `!ticketsetup apply "Apply" 123456789012345678 987654321098765432 111111111111111111,222222222222222222 333333333333333333 444444444444444444 "SOUTH | {username}"` (staff role IDs are comma-separated, no spaces).
+
+Ticket lifecycle: **open** → **claimed** (staff clicked Claim) → **approved** (role + nickname applied) or **closed** (no approval). Data is isolated per guild under `guilds/{guildId}/` - see [Data & Storage](#data--storage).
+
+**Permissions**
+
 | Command | Description |
-|---------|-------------|
-| `!prefix <new>` | Change the bot's prefix |
+|---|---|
+| `!prefix <new>` | Change the bot's prefix for this server |
 | `/perms list` | View role permissions |
-| `/perms add <bank\|cta\|content> @role` | Grant role permission |
-| `/perms remove <bank\|cta\|content> @role` | Revoke role permission |
-
-**Permission Types:**
-- `bank` - Allow role to manage bank deposits/withdrawals
-- `cta` - Allow role to create regear threads
-- `content` - Allow role to create and manage content callouts
+| `/perms add <bank\|cta\|content> @role` | Grant a role permission |
+| `/perms remove <bank\|cta\|content> @role` | Revoke a role permission |
 
 ---
 
-## ❓ Frequently Asked Questions
+## FAQ / Troubleshooting
 
-**Q: Why can't I register?**
-- Make sure you're using your exact in-game name (case-sensitive)
-- Verify you're actually in the guild in Albion Online
-- Check you selected the correct region
-- For alliance registration, use `region:asia type:alliance`
+**Why can't I register?**
+Use your exact in-game name (case-sensitive), confirm you're actually in the guild/alliance in Albion, and check you selected the right region.
 
-**Q: How do I change my registered character?**
-- Use `/unregister` first, then `/register` with your new character
+**How do I change my registered character?**
+`/unregister`, then `/register` with the new character. Only one character per Discord account.
 
-**Q: My nickname didn't change, why?**
-- The bot needs "Manage Nicknames" permission
-- The bot's role must be higher than your highest role
-- Contact an admin if issues persist
+**My nickname/role didn't change.**
+The bot needs Manage Nicknames / Manage Roles, and its own role must be positioned *above* the role or member being changed in Server Settings → Roles.
 
-**Q: Can I register multiple characters?**
-- No, only one character per Discord account
-- Use `/unregister` to switch characters
+**What does a purge do?**
+`type:guild` re-checks registered members against the Albion API and removes entries that no longer match; `type:alliance` removes all active alliance registrations and the configured alliance role(s).
 
-**Q: What happens during a purge?**
-- `type:guild` checks registered members against guild verification and removes invalid entries
-- `type:alliance` removes all active alliance registrations and removes configured alliance role(s)
+**Tickets aren't being created.**
+Confirm a panel exists (`!ticketpanels` / `/ticket list`) and the bot has Manage Channels and the category ID in the panel config is correct.
+
+**Slash commands aren't showing up in Discord.**
+Run `npm run register` and wait a few minutes for Discord to propagate the change.
 
 ---
 
-## 🔐 Required Bot Permissions
-
-For admins setting up the bot, ensure these permissions are enabled:
-- Manage Nicknames
-- Manage Roles
-- Read Messages
-- Send Messages
-- Create Threads
-- Manage Threads
-- Embed Links
-- Read Message History
-
----
-
-## 📞 Support
+## Support
 
 For help or issues, contact your guild leadership through Discord.
-
----
-
-**Built for Albion Online Guilds** 🛡️⚔️

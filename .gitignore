@@ -1,6 +1,5 @@
 node_modules
 .env
-.env.Example
 bank-data.json
 permissions-config.json
 prefix-config.json
