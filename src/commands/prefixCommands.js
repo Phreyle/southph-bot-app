@@ -208,6 +208,11 @@ export async function handlePrefixCommands(message, command, args, prefix) {
 
       const result = deposit(message.guild.id, mentionedUser.id, amount);
 
+      if (!result.success) {
+        await message.reply(`❌ ${result.error}`);
+        return;
+      }
+
       const embed = new EmbedBuilder()
         .setColor(0x2ecc71)
         .setTitle('💰 Deposit Successful')
@@ -1064,6 +1069,7 @@ export async function handlePrefixCommands(message, command, args, prefix) {
           .addFields(
             { name: 'Registrations Checked', value: String(result.checked), inline: true },
             { name: 'Removed', value: String(result.removed), inline: true },
+            { name: 'Valid', value: String(result.valid || 0), inline: true },
             { name: 'Errors', value: String(result.errors), inline: true }
           )
           .setTimestamp();
