@@ -5,7 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { writeJsonAtomicSync } from '../../utils/atomicFile.js';
 
 // Currency symbol
 export const CURRENCY = '💰';
@@ -42,7 +42,7 @@ function saveData(guildId, bankData) {
   const file = getBankFile(guildId);
   try {
     const data = Object.fromEntries(bankData);
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+    writeJsonAtomicSync(file, data);
   } catch (error) {
     console.error(`❌ Error saving bank data for guild ${guildId}:`, error);
   }
@@ -57,25 +57,6 @@ function saveData(guildId, bankData) {
 export function getBalance(guildId, userId) {
   const bankData = loadData(guildId);
   return Number(bankData.get(userId)) || 0;
-}
-
-/**
- * Set user balance
- * @param {string} guildId
- * @param {string} userId
- * @param {number} amount
- * @returns {boolean}
- */
-export function setBalance(guildId, userId, amount) {
-  if (amount < 0) return false;
-  const bankData = loadData(guildId);
-  if (amount === 0) {
-    bankData.delete(userId);
-  } else {
-    bankData.set(userId, amount);
-  }
-  saveData(guildId, bankData);
-  return true;
 }
 
 /**
@@ -142,17 +123,6 @@ export function withdraw(guildId, userId, amount) {
 export function getActiveUsers(guildId) {
   const bankData = loadData(guildId);
   return Array.from(bankData.entries()).filter(([_, balance]) => Number(balance) > 0);
-}
-
-/**
- * Check if user has balance
- * @param {string} guildId
- * @param {string} userId
- * @returns {boolean}
- */
-export function hasBalance(guildId, userId) {
-  const bankData = loadData(guildId);
-  return bankData.has(userId) && Number(bankData.get(userId)) > 0;
 }
 
 /**

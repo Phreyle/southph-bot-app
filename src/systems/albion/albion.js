@@ -555,14 +555,6 @@ export async function purgeUsers(guild, registerType = 'guild') {
   };
 }
 
-export function getUserInfo(guildId, discordId, registerType = 'guild') {
-  return getAlbionUser(guildId, discordId, registerType);
-}
-
-export function getAllUsers(guildId, registerType = null) {
-  return getAllAlbionUsers(guildId, registerType, true);
-}
-
 export async function unregisterUser(guild, discordId, registerType = 'guild') {
   const guildId = guild.id;
   const normalizedType = normalizeRegisterType(registerType);

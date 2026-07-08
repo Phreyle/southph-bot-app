@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../config/constants.js';
+import { writeJsonAtomicSync } from '../utils/atomicFile.js';
 
 // Utility functions for per-guild files
 const getPrefixFile = (guildId) => path.join(DATA_DIR, `prefix-config-${guildId}.json`);
@@ -23,7 +24,7 @@ export function loadPrefix(guildId) {
 export function savePrefix(guildId, prefix) {
   try {
     const file = getPrefixFile(guildId);
-    fs.writeFileSync(file, JSON.stringify({ prefix }, null, 2));
+    writeJsonAtomicSync(file, { prefix });
     console.log(`✅ Prefix changed to: ${prefix} for guild ${guildId}`);
     return true;
   } catch (error) {
@@ -54,7 +55,7 @@ export function loadPermissions(guildId) {
 export function savePermissions(guildId, data) {
   try {
     const file = getPermissionsFile(guildId);
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    writeJsonAtomicSync(file, data);
     console.log(`✅ Permissions saved successfully for guild ${guildId}`);
   } catch (e) {
     console.error(`Error saving permissions for guild ${guildId}:`, e);

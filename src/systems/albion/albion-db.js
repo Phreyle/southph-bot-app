@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../../config/constants.js';
+import { writeJsonAtomicSync } from '../../utils/atomicFile.js';
 
 // File paths for Albion data
 const getAlbionConfigFile = (guildId) => path.join(DATA_DIR, `albion-config-${guildId}.json`);
@@ -105,7 +106,7 @@ export function saveAlbionConfig(guildId, config) {
   try {
     ensureDataDir();
     const file = getAlbionConfigFile(guildId);
-    fs.writeFileSync(file, JSON.stringify(config, null, 2), 'utf8');
+    writeJsonAtomicSync(file, config);
     console.log(`✅ Albion config saved for guild ${guildId}`);
   } catch (error) {
     console.error(`❌ Error saving Albion config for guild ${guildId}:`, error);
@@ -187,7 +188,7 @@ export function saveAlbionUsers(guildId, users) {
       };
     }
 
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+    writeJsonAtomicSync(file, data);
     console.log(`✅ Albion users saved for guild ${guildId}`);
   } catch (error) {
     console.error(`❌ Error saving Albion users for guild ${guildId}:`, error);
@@ -230,14 +231,6 @@ export function saveAlbionUser(guildId, discordId, userData) {
   users.set(key, record);
   
   saveAlbionUsers(guildId, users);
-}
-
-/**
- * Upsert registration with explicit fields.
- */
-export function upsertAlbionRegistration(guildId, discordId, registrationData) {
-  saveAlbionUser(guildId, discordId, registrationData);
-  return getAlbionUser(guildId, discordId, registrationData.registerType);
 }
 
 /**

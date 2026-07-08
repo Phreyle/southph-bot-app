@@ -30,65 +30,6 @@ export async function getTicketStats(guildId) {
 }
 
 /**
- * Get all open tickets for a guild
- */
-export async function getOpenTickets(guildId) {
-  try {
-    const tickets = await loadTickets(guildId);
-    return tickets.filter(t => t.status === 'open' || t.status === 'claimed');
-  } catch (error) {
-    console.error('Error getting open tickets:', error);
-    return [];
-  }
-}
-
-/**
- * Get tickets by user
- */
-export async function getUserTickets(guildId, userId) {
-  try {
-    const tickets = await loadTickets(guildId);
-    return tickets.filter(t => t.authorId === userId);
-  } catch (error) {
-    console.error('Error getting user tickets:', error);
-    return [];
-  }
-}
-
-/**
- * Get transcript for a ticket
- */
-export async function getTicketTranscript(guildId, ticketId) {
-  try {
-    const transcripts = await loadTranscripts(guildId);
-    return transcripts.find(t => t.ticketId === ticketId);
-  } catch (error) {
-    console.error('Error getting transcript:', error);
-    return null;
-  }
-}
-
-/**
- * Format transcript as readable text
- */
-export function formatTranscript(transcript) {
-  if (!transcript) return 'No transcript found.';
-
-  let text = `=== TICKET #${transcript.ticketId} TRANSCRIPT ===\n\n`;
-  text += `Total Messages: ${transcript.messages.length}\n`;
-  text += `Staff Messages: ${transcript.staffMessageCount}\n\n`;
-  text += '--- MESSAGES ---\n\n';
-
-  for (const msg of transcript.messages) {
-    const staffBadge = msg.isStaff ? '[STAFF] ' : '';
-    const timestamp = new Date(msg.createdAt).toLocaleString();
-    text += `[${timestamp}] ${staffBadge}${msg.authorTag}:\n${msg.content}\n\n`;
-  }
-
-  return text;
-}
-
-/**
  * Validate panel configuration
  */
 export function validatePanel(panel) {
@@ -172,31 +113,4 @@ export async function ticketSystemHealthCheck(guildId) {
   }
 
   return health;
-}
-
-/**
- * Get ticket age in hours
- */
-export function getTicketAge(ticket) {
-  const openDate = new Date(ticket.openDate);
-  const now = new Date();
-  const diffMs = now - openDate;
-  return Math.floor(diffMs / (1000 * 60 * 60));
-}
-
-/**
- * Get old unclaimed tickets (open for more than X hours)
- */
-export async function getOldUnclaimedTickets(guildId, hoursThreshold = 24) {
-  try {
-    const tickets = await loadTickets(guildId);
-    return tickets.filter(t => {
-      if (t.status !== 'open') return false;
-      const age = getTicketAge(t);
-      return age >= hoursThreshold;
-    });
-  } catch (error) {
-    console.error('Error getting old tickets:', error);
-    return [];
-  }
 }

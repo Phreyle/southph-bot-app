@@ -265,17 +265,6 @@ export async function validatePlayerGuild(region, playerName, expectedGuildName,
 }
 
 /**
- * Validate if player is in the specified guild using Player ID
- * @param {string} region - Region (americas, europe, asia)
- * @param {string} playerId - Player's unique ID
- * @param {string} expectedGuildName - Expected guild name
- * @returns {Promise<Object>} Validation result
- */
-export async function validatePlayerGuildById(region, playerId, expectedGuildName) {
-  return validatePlayerGuild(region, null, expectedGuildName, playerId);
-}
-
-/**
  * Validate if player is in an alliance
  * @param {string} region - Region (americas, europe, asia)
  * @param {string} playerName - Player's in-game name
