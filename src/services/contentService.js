@@ -273,33 +273,134 @@ export const getRoleDisplayName = (key, customNames = {}) => {
 
 // ─── Active-content embed & buttons ───────────────────────────────────────────
 
+const CATEGORY_META = {
+  tank: { emoji: '🛡️', label: 'Tank' },
+  heal: { emoji: '💚', label: 'Heal' },
+  support: { emoji: '✨', label: 'Support' },
+  dps: { emoji: '⚔️', label: 'DPS' },
+};
+const CATEGORY_ORDER = ['tank', 'heal', 'support', 'dps'];
+
+// Plain weapon/role label with no category prefix - used in the grouped
+// roster where the category is already the field header. Falls back to the
+// full "Category - Label" form (getRoleDisplayName) for any unmapped key.
+const getRoleShortLabel = (key, customNames = {}) => {
+  if (customNames[key]) return customNames[key];
+  const info = ROLE_MAP[getBaseKey(key)];
+  return info ? info.label : getRoleDisplayName(key, customNames);
+};
+
+const buildProgressBar = (filled, total, length = 12) => {
+  if (total <= 0) return '▱'.repeat(length);
+  const filledSegments = Math.min(length, Math.round((filled / total) * length));
+  return '▰'.repeat(filledSegments) + '▱'.repeat(length - filledSegments);
+};
+
+// Splits pre-formatted lines into chunks that each fit inside a single embed
+// field value (Discord's limit is 1024 chars) - a full 20-slot party stacked
+// into one category can get close to that.
+const chunkFieldLines = (lines, maxChars = 1000) => {
+  const chunks = [];
+  let current = [];
+  let currentLen = 0;
+  for (const line of lines) {
+    const lineLen = line.length + 1;
+    if (current.length > 0 && currentLen + lineLen > maxChars) {
+      chunks.push(current.join('\n'));
+      current = [];
+      currentLen = 0;
+    }
+    current.push(line);
+    currentLen += lineLen;
+  }
+  if (current.length > 0) chunks.push(current.join('\n'));
+  return chunks;
+};
+
+// Parses a "HH:MM", "HH:MM UTC", or "H:MM AM/PM" style time into a Discord
+// timestamp so Discord renders it as a live, localized countdown for every
+// viewer. Falls back to the raw text for anything else (e.g. "After reset").
+const formatEventTime = (timeStr) => {
+  if (!timeStr) return 'TBD';
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)?\s*(utc)?$/i);
+  if (!match) return timeStr;
+
+  const [, hourRaw, minRaw, meridiem] = match;
+  let hour = parseInt(hourRaw, 10);
+  const min = parseInt(minRaw, 10);
+  if (hour > 23 || min > 59) return timeStr;
+  if (meridiem) {
+    hour = hour % 12;
+    if (meridiem.toLowerCase() === 'pm') hour += 12;
+  }
+
+  const now = new Date();
+  const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, min, 0));
+  if (target.getTime() <= Date.now()) {
+    target.setUTCDate(target.getUTCDate() + 1); // already passed today - assume tomorrow
+  }
+
+  const unix = Math.floor(target.getTime() / 1000);
+  return `<t:${unix}:t> (<t:${unix}:R>)`;
+};
+
 // Build the content embed dynamically from activeRoles
 export const buildContentEmbed = () => {
   const { title, time, demassNotice, activeRoles, roles, fill, customRoleNames } = contentState;
   const total = activeRoles.length;
   const filled = activeRoles.filter(k => roles[k] != null).length;
+  const isFull = total > 0 && filled === total;
 
-  const roleLines = activeRoles.map((key, i) => {
-    const displayName = getRoleDisplayName(key, customRoleNames);
-    const userId = roles[key];
-    return `**${i + 1}. ${displayName}**   ${userId ? '➡️ <@' + userId + '>' : ''}`;
+  // Group by category while keeping each role's GLOBAL slot number
+  // (its position in activeRoles) - /content removeuser slot:N depends on it.
+  const byCategory = { tank: [], heal: [], support: [], dps: [] };
+  activeRoles.forEach((key, i) => {
+    const category = ROLE_MAP[getBaseKey(key)]?.category;
+    (byCategory[category] || byCategory.dps).push({ key, slot: i + 1 });
   });
 
-  const fillSection = fill.length > 0
-    ? `\n\n**🔄 FILL (${fill.length}):** ${fill.map(id => `<@${id}>`).join(', ')}`
-    : '';
+  const fields = [];
+  for (const cat of CATEGORY_ORDER) {
+    const entries = byCategory[cat];
+    if (entries.length === 0) continue;
+
+    const meta = CATEGORY_META[cat];
+    const catFilled = entries.filter((e) => roles[e.key]).length;
+    const lines = entries.map(({ key, slot }) => {
+      const userId = roles[key];
+      return `\`${slot}.\` ${getRoleShortLabel(key, customRoleNames)} — ${userId ? `<@${userId}>` : '🔓 *Open*'}`;
+    });
+
+    const chunks = chunkFieldLines(lines);
+    chunks.forEach((chunk, i) => {
+      fields.push({
+        name: `${meta.emoji} ${meta.label} (${catFilled}/${entries.length})${chunks.length > 1 ? ` [${i + 1}/${chunks.length}]` : ''}`,
+        value: chunk,
+        inline: entries.length <= 4 && chunks.length === 1,
+      });
+    });
+  }
+
+  if (fill.length > 0) {
+    // Max party size is 20, so the mention list here (~21 chars each) never
+    // approaches the 1024-char field limit - no chunking needed.
+    fields.push({
+      name: `🔄 Fill (${fill.length})`,
+      value: fill.map((id) => `<@${id}>`).join(', '),
+      inline: false,
+    });
+  }
 
   return new EmbedBuilder()
-    .setColor(0x5865F2)
+    .setColor(isFull ? 0x57F287 : 0x5865F2)
     .setTitle(`📣 ${title || 'Role Call'}`)
     .setDescription(
-      `**__X UP ROLE!__**\n` +
-      `**Time:** ${time || 'TBD'}\n` +
-      (demassNotice ? `**Demass:** ${demassNotice}\n` : '') +
-      `**Status:** ${filled}/${total}\n\n` +
-      roleLines.join('\n') +
-      fillSection
-    );
+      `**${buildProgressBar(filled, total)}**  \`${filled}/${total}\`\n` +
+      `🕒 ${formatEventTime(time)}` +
+      (demassNotice ? `\n⚠️ **Demass:** ${demassNotice}` : '')
+    )
+    .addFields(fields)
+    .setFooter({ text: isFull ? '✅ Roster full!' : 'Click a role below to sign up • 🔄 Fill for any slot' });
 };
 
 // Build Discord button rows dynamically from activeRoles (max 4 role rows + 1 utility row)
@@ -524,21 +625,35 @@ export const buildContentDetailsModal = () =>
 export const buildContentPreviewEmbed = (pending) => {
   const { assignedRoles = [], customRoleNames = {}, title, time, demassNotice } = pending;
 
-  const roleLines = assignedRoles.map((key, i) => {
-    const displayName = getRoleDisplayName(key, customRoleNames);
-    return `**${i + 1}. ${displayName}**`;
+  const byCategory = { tank: [], heal: [], support: [], dps: [] };
+  assignedRoles.forEach((key, i) => {
+    const category = ROLE_MAP[getBaseKey(key)]?.category;
+    (byCategory[category] || byCategory.dps).push({ key, slot: i + 1 });
   });
+
+  const fields = [];
+  for (const cat of CATEGORY_ORDER) {
+    const entries = byCategory[cat];
+    if (entries.length === 0) continue;
+    const meta = CATEGORY_META[cat];
+    const lines = entries.map(({ key, slot }) => `\`${slot}.\` ${getRoleShortLabel(key, customRoleNames)}`);
+    fields.push({
+      name: `${meta.emoji} ${meta.label} (${entries.length})`,
+      value: lines.join('\n'),
+      inline: entries.length <= 4,
+    });
+  }
 
   return new EmbedBuilder()
     .setColor(0xFEE75C)
     .setTitle(`📋 Preview: ${title || 'Role Call'}`)
     .setDescription(
-      `**⚠️ PREVIEW — Not yet published**\n\n` +
-      `**Time:** ${time || 'TBD'}\n` +
-      (demassNotice ? `**Demass:** ${demassNotice}\n` : '') +
-      `**Party size:** ${assignedRoles.length}\n\n` +
-      roleLines.join('\n'),
-    );
+      `⚠️ **Not yet published** — review below, then Publish or Edit Details\n\n` +
+      `🕒 ${formatEventTime(time)}` +
+      (demassNotice ? `\n⚠️ **Demass:** ${demassNotice}` : '') +
+      `\n**Party size:** ${assignedRoles.length}`
+    )
+    .addFields(fields);
 };
 
 // Step 3c (Preset): optional duplicate-slots step
