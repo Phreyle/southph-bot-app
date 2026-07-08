@@ -278,8 +278,13 @@ const CATEGORY_META = {
   heal: { emoji: '💚', label: 'Heal' },
   support: { emoji: '✨', label: 'Support' },
   dps: { emoji: '⚔️', label: 'DPS' },
+  custom: { emoji: '📝', label: 'Custom' },
 };
-const CATEGORY_ORDER = ['tank', 'heal', 'support', 'dps'];
+const CATEGORY_ORDER = ['tank', 'heal', 'support', 'dps', 'custom'];
+
+// Custom-method roles (key like "custom_0") have no weapon entry in ROLE_MAP,
+// so they have no real category - group them separately instead of guessing.
+const getRoleCategory = (key) => ROLE_MAP[getBaseKey(key)]?.category || 'custom';
 
 // Plain weapon/role label with no category prefix - used in the grouped
 // roster where the category is already the field header. Falls back to the
@@ -353,10 +358,9 @@ export const buildContentEmbed = () => {
 
   // Group by category while keeping each role's GLOBAL slot number
   // (its position in activeRoles) - /content removeuser slot:N depends on it.
-  const byCategory = { tank: [], heal: [], support: [], dps: [] };
+  const byCategory = { tank: [], heal: [], support: [], dps: [], custom: [] };
   activeRoles.forEach((key, i) => {
-    const category = ROLE_MAP[getBaseKey(key)]?.category;
-    (byCategory[category] || byCategory.dps).push({ key, slot: i + 1 });
+    byCategory[getRoleCategory(key)].push({ key, slot: i + 1 });
   });
 
   const fields = [];
@@ -625,10 +629,9 @@ export const buildContentDetailsModal = () =>
 export const buildContentPreviewEmbed = (pending) => {
   const { assignedRoles = [], customRoleNames = {}, title, time, demassNotice } = pending;
 
-  const byCategory = { tank: [], heal: [], support: [], dps: [] };
+  const byCategory = { tank: [], heal: [], support: [], dps: [], custom: [] };
   assignedRoles.forEach((key, i) => {
-    const category = ROLE_MAP[getBaseKey(key)]?.category;
-    (byCategory[category] || byCategory.dps).push({ key, slot: i + 1 });
+    byCategory[getRoleCategory(key)].push({ key, slot: i + 1 });
   });
 
   const fields = [];
