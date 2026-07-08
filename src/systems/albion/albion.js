@@ -516,34 +516,39 @@ export async function purgeUsers(guild, registerType = 'guild') {
     const userData = getAlbionUser(guildId, id, 'guild');
 
     if (!userData) {
+      // Member holds the register role but has no registration record at all
+      // (e.g. manually assigned by an admin) - treat the same as a guild
+      // mismatch: strip the role and reset the nickname.
+      results.removed++;
+      await member.roles.remove(config.registerRoleId).catch(() => null);
+      await member.setNickname(null).catch(() => null);
       results.details.push({
         discordId: id,
         username: user.username,
         status: 'no_data',
-        action: 'none'
+        action: 'removed'
       });
-      continue;
-    }
+    } else {
+      try {
+        const validation = await validatePlayerGuild(
+          userData.region,
+          userData.ign,
+          config.albionGuildName,
+          userData.playerId
+        );
 
-    try {
-      const validation = await validatePlayerGuild(
-        userData.region,
-        userData.ign,
-        config.albionGuildName,
-        userData.playerId
-      );
-
-      if (validation.success) {
-        results.valid++;
-      } else {
-        results.removed++;
-        await member.roles.remove(config.registerRoleId).catch(() => null);
-        await member.setNickname(null).catch(() => null);
-        removeAlbionUser(guildId, id, 'guild');
+        if (validation.success) {
+          results.valid++;
+        } else {
+          results.removed++;
+          await member.roles.remove(config.registerRoleId).catch(() => null);
+          await member.setNickname(null).catch(() => null);
+          removeAlbionUser(guildId, id, 'guild');
+        }
+      } catch (error) {
+        results.errors++;
+        console.error(`Error checking ${user.username}:`, error);
       }
-    } catch (error) {
-      results.errors++;
-      console.error(`Error checking ${user.username}:`, error);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
