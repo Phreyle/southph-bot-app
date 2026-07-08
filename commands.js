@@ -494,8 +494,7 @@ const REGISTER_COMMAND = {
       required: true,
       choices: [
         { name: 'Alliance', value: 'alliance' },
-        { name: 'Guild', value: 'guild' },
-        { name: 'Player', value: 'player' }
+        { name: 'Guild', value: 'guild' }
       ]
     },
     {

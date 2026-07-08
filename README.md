@@ -119,7 +119,7 @@ All writes go through a temp-file-then-rename pattern (`src/utils/atomicFile.js`
 | `/help` | Show all available commands |
 | `/utc` | Display current UTC time (Albion game time) |
 | `/info <playername>` | Search for any Albion player |
-| `/register region:<region> type:<alliance\|guild\|player> name:<ign>` | Register your character |
+| `/register region:<region> type:<alliance\|guild> name:<ign>` | Register your character - ties your IGN to your Discord account |
 | `/unregister` | Unregister your character |
 | `/config view` | View guild verification settings |
 | `/bank balance [@user]` | Check your balance or another user's |

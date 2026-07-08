@@ -885,14 +885,14 @@ export async function handlePrefixCommands(message, command, args, prefix) {
   if (command === 'register' || command === 'reg') {
     const region = args[0]?.toLowerCase();
     const maybeType = args[1]?.toLowerCase();
-    const hasExplicitType = ['alliance', 'guild', 'player'].includes(maybeType);
+    const hasExplicitType = ['alliance', 'guild'].includes(maybeType);
     const registerType = hasExplicitType ? maybeType : 'guild';
     const ign = hasExplicitType ? args.slice(2).join(' ') : args.slice(1).join(' ');
 
     if (!region || !ign) {
       await message.reply(
-        `❌ Usage: \`${prefix}register <region> <ign>\`\n` +
-        `or \`${prefix}register <region> <alliance|guild|player> <ign>\`\n` +
+        `❌ Usage: \`${prefix}register <region> <ign>\` (defaults to Guild)\n` +
+        `or \`${prefix}register <region> <alliance|guild> <ign>\`\n` +
         `**Regions:** americas, europe, asia\n` +
         `**Examples:** \`${prefix}register americas MyCharName\`, \`${prefix}register asia alliance MyCharName\``
       );

@@ -1948,7 +1948,8 @@ export async function handleSlashCommands(req, res, client) {
         return;
       }
 
-      // Remove both registration types so alliance-only users can unregister.
+      // Remove both registration types so alliance-only or guild-only users can unregister.
+      // (Legacy 'player' registrations are normalized to 'guild' on load - see albion-db.js.)
       const unregisterAttempts = await Promise.all([
         unregisterUser(guild, userId, 'alliance'),
         unregisterUser(guild, userId, 'guild')

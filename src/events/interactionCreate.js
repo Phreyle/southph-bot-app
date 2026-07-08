@@ -344,8 +344,8 @@ export async function handleButtonInteractions(req, res, client) {
     const parts = componentId.split('_');
     const requestUserId = parts[2];
     const region = parts[3];
-    const registerType = ['alliance', 'guild', 'player'].includes(parts[4]) ? parts[4] : 'guild';
-    const playerIdStartIndex = ['alliance', 'guild', 'player'].includes(parts[4]) ? 5 : 4;
+    const registerType = ['alliance', 'guild'].includes(parts[4]) ? parts[4] : 'guild';
+    const playerIdStartIndex = ['alliance', 'guild'].includes(parts[4]) ? 5 : 4;
     const playerId = parts.slice(playerIdStartIndex).join('_');
     
     const clickerId = req.body.member?.user?.id || req.body.user?.id;

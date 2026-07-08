@@ -127,7 +127,16 @@ export function loadAlbionUsers(guildId) {
 
       for (const [key, value] of Object.entries(data)) {
         if (value && value.register_type) {
-          users.set(key, toLegacyView(value));
+          // 'player' was a legacy registration type functionally identical to
+          // 'guild' (same validation, role, and nickname) and has been
+          // removed as a selectable option - fold any existing records into
+          // 'guild' on load so they keep working with purge/unregister/etc.
+          if (value.register_type === 'player') {
+            const record = { ...value, register_type: 'guild' };
+            users.set(registrationKey(record.discord_user_id, 'guild'), toLegacyView(record));
+          } else {
+            users.set(key, toLegacyView(value));
+          }
           continue;
         }
 
