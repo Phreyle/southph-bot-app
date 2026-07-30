@@ -398,20 +398,24 @@ export async function handleSlashCommands(req, res, client) {
     if (subcommand === 'create') {
       console.log('   Creating new regear thread...');
 
-      // Check permission for CTA regear
-      const contentType = req.body.data.options[0].options[0].value;
-      if (contentType === 'cta' && !hasPermissionSlash(member, 'ctaRegearRoles', guildId)) {
+      // Any regear thread now requires the same permission /regear close already
+      // requires - there's no more "type" to conditionally gate on since the
+      // title is free text (previously only content_type:cta was gated; ff was
+      // open to everyone).
+      if (!hasPermissionSlash(member, 'ctaRegearRoles', guildId)) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: '❌ You need Administrator permission or an authorized role to use this command for CTA regear.',
+            content: '❌ You need Administrator permission or an authorized role to use this command.',
             flags: 64
           },
         });
       }
 
-      const threadTitle = req.body.data.options[0].options[1].value;
-      const time = req.body.data.options[0].options[2].value;
+      const createOptions = req.body.data.options[0].options;
+      const threadTitle = createOptions.find(o => o.name === 'title').value;
+      const time = createOptions.find(o => o.name === 'time').value;
+      const notice = createOptions.find(o => o.name === 'notice')?.value || null;
       const channelId = req.body.channel_id;
 
       // Defer the response
@@ -425,7 +429,7 @@ export async function handleSlashCommands(req, res, client) {
 
       try {
         // Create a thread in the channel
-        console.log(`   📝 Creating ${contentType.toUpperCase()} regear thread...`);
+        console.log(`   📝 Creating regear thread: ${threadTitle}...`);
         const threadResponse = await DiscordRequest(`channels/${channelId}/threads`, {
           method: 'POST',
           body: {
@@ -438,17 +442,13 @@ export async function handleSlashCommands(req, res, client) {
         const threadId = threadData.id;
         console.log(`   ✅ Thread created: ${threadId}`);
 
-        // Create embed based on content type
-        const embedColor = contentType === 'cta' ? 0xe74c3c : 0x5865F2;
-        const embedTitle = contentType === 'cta' ? '⚔️ CTA REGEAR' : '🛡️ FF REGEAR';
-        const embedDescription = contentType === 'cta'
-          ? `**SEND REGEAR HERE**\n**INCLUDE OC BREAK**\n**Time:** ${time}`
-          : `**SEND REGEAR HERE**\n**Time:** ${time}`;
-
         const embed = new EmbedBuilder()
-          .setColor(embedColor)
-          .setTitle(embedTitle)
-          .setDescription(embedDescription);
+          .setColor(0xe74c3c)
+          .setTitle(`⚔️ ${threadTitle}`)
+          .setDescription(
+            `**SEND REGEAR HERE**\n**Time:** ${time}` +
+            (notice ? `\n**Notice:** ${notice}` : '')
+          );
 
         // Post the message in the thread
         await DiscordRequest(`channels/${threadId}/messages`, {
@@ -463,20 +463,20 @@ export async function handleSlashCommands(req, res, client) {
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: `✅ ${contentType.toUpperCase()} regear thread created: **${threadTitle}**`,
+            content: `✅ Regear thread created: **${threadTitle}**`,
             flags: 64
           },
         });
-        console.log(`   ✅ /regear create ${contentType} completed successfully`);
+        console.log(`   ✅ /regear create completed successfully`);
 
       } catch (err) {
-        console.error(`   ❌ Error creating ${contentType} regear thread:`, err);
+        console.error(`   ❌ Error creating regear thread:`, err);
 
         // Follow up with error message
         await DiscordRequest(`webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`, {
           method: 'PATCH',
           body: {
-            content: `❌ Failed to create ${contentType.toUpperCase()} regear thread.`,
+            content: `❌ Failed to create regear thread.`,
             flags: 64
           },
         });

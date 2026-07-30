@@ -131,18 +131,8 @@ const REGEAR_COMMAND = {
       options: [
         {
           type: 3,
-          name: 'content_type',
-          description: 'Type of content',
-          required: true,
-          choices: [
-            { name: 'CTA', value: 'cta' },
-            { name: 'FF', value: 'ff' },
-          ],
-        },
-        {
-          type: 3,
           name: 'title',
-          description: 'Title for the regear thread',
+          description: 'Title for the regear thread (e.g., CTA Regear, Hellgate Regear)',
           required: true,
         },
         {
@@ -150,6 +140,12 @@ const REGEAR_COMMAND = {
           name: 'time',
           description: 'Time for the regear (e.g., 20:00 UTC)',
           required: true,
+        },
+        {
+          type: 3,
+          name: 'notice',
+          description: 'Optional extra instructions (e.g., Include OC break)',
+          required: false,
         },
       ],
     },

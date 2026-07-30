@@ -11,7 +11,7 @@ A Discord bot for Albion Online guilds featuring automatic guild/alliance verifi
 - **Virtual Bank** - Track virtual currency for guild activities
 - **Content Management** - Organize group content with role signups
 - **Ticket System** - Application and support tickets
-- **Regear Threads** - Manage regear requests for CTA/FF
+- **Regear Threads** - Manage regear requests for any content type
 
 ---
 
@@ -177,8 +177,10 @@ Content types: **ROA** (Roads of Avalon, 7 roles + fill), **CTA** (tank/heal/dps
 
 | Command | Description |
 |---|---|
-| `/regear create <type> <title> <time>` | Create a regear thread (CTA or FF) |
+| `/regear create <title> <time> [notice]` | Create a regear thread with any title (e.g. "CTA Regear", "Hellgate Regear") - `notice` is an optional extra instruction line (e.g. "Include OC break") |
 | `/regear close` | Close and lock the regear thread |
+
+Both subcommands require the same `ctaRegearRoles` permission (see `/perms`) - there's no more per-type distinction, since the title is free text now.
 
 **Ticket system**
 

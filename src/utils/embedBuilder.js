@@ -56,7 +56,7 @@ export function buildHelpEmbed(member, guildId, isSlashCommand = false) {
   // CTA Regear Commands
   if (hasCtaPerms || isAdmin) {
     description += `**⚔️ Regear Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
-    description += `• \`/regear create [cta|ff] [title] [time]\` - Create a regear thread\n`;
+    description += `• \`/regear create [title] [time] [notice]\` - Create a regear thread\n`;
     description += `• \`/regear close\` - Close and lock the current regear thread\n\n`;
   }
 
@@ -169,8 +169,8 @@ export function buildPaginatedHelpEmbeds(member, guildId, isSlashCommand = false
 
   if (hasCtaPerms || isAdmin) {
     page2Desc += `**⚔️ Regear Commands** ${isAdmin ? '(Administrator)' : '(Authorized Role)'}:\n`;
-    page2Desc += `• \`/regear create [cta|ff] [title] [time]\`\n`;
-    page2Desc += `  Create a regear thread (CTA or FF)\n`;
+    page2Desc += `• \`/regear create [title] [time] [notice]\`\n`;
+    page2Desc += `  Create a regear thread with any title\n`;
     page2Desc += `• \`/regear close\`\n`;
     page2Desc += `  Close and lock the current regear thread\n\n`;
   }
